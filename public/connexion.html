@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Connexion - Ma Messagerie</title>
+  <link rel="stylesheet" href="auth.css">
+</head>
+<body>
+  <div class="auth-container">
+    <h1>💬 Connexion</h1>
+
+    <form id="form-connexion">
+      <input type="text" id="pseudo" placeholder="Pseudo" required>
+      <input type="password" id="motdepasse" placeholder="Mot de passe" required>
+      <button type="submit">Se connecter</button>
+    </form>
+
+    <p id="message-erreur" class="erreur"></p>
+
+    <p class="lien">Pas encore de compte ? <a href="/inscription.html">Inscris-toi</a></p>
+  </div>
+
+  <script>
+    const form = document.getElementById("form-connexion");
+    const messageErreur = document.getElementById("message-erreur");
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const pseudo = document.getElementById("pseudo").value;
+      const motdepasse = document.getElementById("motdepasse").value;
+
+      const reponse = await fetch("/connexion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pseudo, motdepasse })
+      });
+
+      const data = await reponse.json();
+
+      if (data.succes) {
+        window.location.href = "/";
+      } else {
+        messageErreur.textContent = data.erreur;
+      }
+    });
+  </script>
+</body>
+</html>S

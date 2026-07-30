@@ -8,16 +8,12 @@
 <body>
 
   <div class="chat-container">
-    <h1>💬 Ma Messagerie</h1>
-
-    <!-- Demande du pseudo au chargement -->
-    <div id="pseudo-form">
-      <input type="text" id="pseudo-input" placeholder="Ton prénom...">
-      <button id="pseudo-btn">Entrer</button>
+    <div class="chat-header">
+      <h1>💬 Ma Messagerie</h1>
+      <button id="deconnexion-btn" title="Se déconnecter">Déconnexion</button>
     </div>
 
-    <!-- Zone de chat, cachée au départ -->
-    <div id="chat-box" style="display: none;">
+    <div id="chat-box">
       <div id="messages"></div>
 
       <form id="message-form">
@@ -27,7 +23,6 @@
     </div>
   </div>
 
-  <!-- Librairie Socket.IO fournie automatiquement par le serveur -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="script.js"></script>
 </body>

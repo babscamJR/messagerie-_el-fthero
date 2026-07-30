@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Inscription - Ma Messagerie</title>
+  <link rel="stylesheet" href="auth.css">
+</head>
+<body>
+  <div class="auth-container">
+    <h1>💬 Inscription</h1>
+
+    <form id="form-inscription">
+      <input type="text" id="pseudo" placeholder="Choisis un pseudo" required>
+      <input type="password" id="motdepasse" placeholder="Choisis un mot de passe" required minlength="4">
+      <button type="submit">Créer mon compte</button>
+    </form>
+
+    <p id="message-erreur" class="erreur"></p>
+
+    <p class="lien">Déjà un compte ? <a href="/connexion.html">Connecte-toi</a></p>
+  </div>
+
+  <script>
+    const form = document.getElementById("form-inscription");
+    const messageErreur = document.getElementById("message-erreur");
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const pseudo = document.getElementById("pseudo").value;
+      const motdepasse = document.getElementById("motdepasse").value;
+
+      const reponse = await fetch("/inscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pseudo, motdepasse })
+      });
+
+      const data = await reponse.json();
+
+      if (data.succes) {
+        window.location.href = "/";
+      } else {
+        messageErreur.textContent = data.erreur;
+      }
+    });
+  </script>
+</body>
+</html>S
