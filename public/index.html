@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Ma Messagerie</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="chat-container">
+    <h1>💬 Ma Messagerie</h1>
+
+    <!-- Demande du pseudo au chargement -->
+    <div id="pseudo-form">
+      <input type="text" id="pseudo-input" placeholder="Ton prénom...">
+      <button id="pseudo-btn">Entrer</button>
+    </div>
+
+    <!-- Zone de chat, cachée au départ -->
+    <div id="chat-box" style="display: none;">
+      <div id="messages"></div>
+
+      <form id="message-form">
+        <input type="text" id="message-input" placeholder="Écris un message..." autocomplete="off">
+        <button type="submit">Envoyer</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Librairie Socket.IO fournie automatiquement par le serveur -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
