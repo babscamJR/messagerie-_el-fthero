@@ -2,25 +2,50 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Ma Messagerie</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <div class="chat-container">
-    <div class="chat-header">
-      <h1>💬 Ma Messagerie</h1>
-      <button id="deconnexion-btn" title="Se déconnecter">Déconnexion</button>
+  <div class="app-container">
+
+    <!-- Barre latérale -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h1>💬 Messagerie</h1>
+        <button id="deconnexion-btn" title="Se déconnecter">Déconnexion</button>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="salon-item actif" data-type="public" id="btn-radio1">
+          📻 Radio 1
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-titre">Messages privés</div>
+        <div id="liste-utilisateurs"></div>
+      </div>
     </div>
 
-    <div id="chat-box">
-      <div id="messages"></div>
+    <!-- Zone de chat -->
+    <div class="chat-container">
+      <div class="chat-header">
+        <span id="titre-conversation">📻 Radio 1</span>
+        <button id="retour-btn" class="mobile-only">← Retour</button>
+      </div>
 
-      <form id="message-form">
-        <input type="text" id="message-input" placeholder="Écris un message..." autocomplete="off">
-        <button type="submit">Envoyer</button>
-      </form>
+      <div id="chat-box">
+        <div id="messages"></div>
+
+        <form id="message-form">
+          <input type="text" id="message-input" placeholder="Écris un message..." autocomplete="off">
+          <button type="submit">Envoyer</button>
+        </form>
+      </div>
     </div>
+
   </div>
 
   <script src="/socket.io/socket.io.js"></script>

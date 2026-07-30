@@ -1,6 +1,7 @@
 :root {
   --bg-page: #0d1117;
   --bg-card: #161b22;
+  --bg-sidebar: #0d1117;
   --bg-message-other: #21262d;
   --bg-message-mine: #1a4d2e;
   --border-color: #30363d;
@@ -16,27 +17,114 @@
   box-sizing: border-box;
 }
 
+html, body {
+  height: 100%;
+}
+
 body {
   font-family: 'Segoe UI', Arial, sans-serif;
   background-color: var(--bg-page);
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
   margin: 0;
   color: var(--text-primary);
+  height: 100dvh;
 }
 
-.chat-container {
+.app-container {
   background: var(--bg-card);
-  width: 400px;
+  width: 760px;
   height: 600px;
   border-radius: 12px;
   border: 1px solid var(--border-color);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
   display: flex;
+  overflow: hidden;
+}
+
+/* ---------- Sidebar ---------- */
+
+.sidebar {
+  width: 220px;
+  min-width: 220px;
+  background-color: var(--bg-sidebar);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 0;
+}
+
+.sidebar-header {
+  padding: 0 16px 16px 16px;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 10px;
+}
+
+.sidebar-header h1 {
+  color: var(--accent);
+  font-size: 17px;
+  margin: 0 0 10px 0;
+  font-weight: 600;
+}
+
+#deconnexion-btn {
+  background-color: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  padding: 5px 10px;
+  font-size: 11px;
+  border-radius: 6px;
+  cursor: pointer;
+  width: 100%;
+}
+
+#deconnexion-btn:hover {
+  background-color: var(--danger);
+  color: white;
+}
+
+.sidebar-section {
+  padding: 10px 10px;
+  overflow-y: auto;
+}
+
+.sidebar-titre {
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 6px 10px;
+  margin-top: 6px;
+}
+
+.salon-item {
+  padding: 9px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.salon-item:hover {
+  background-color: var(--bg-message-other);
+}
+
+.salon-item.actif {
+  background-color: var(--bg-message-mine);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---------- Zone de chat ---------- */
+
+.chat-container {
+  flex: 1;
+  display: flex;
   flex-direction: column;
   padding: 20px;
+  min-width: 0;
 }
 
 .chat-header {
@@ -46,26 +134,13 @@ body {
   border-bottom: 1px solid var(--border-color);
   padding-bottom: 14px;
   margin-bottom: 10px;
-}
-
-h1 {
-  color: var(--accent);
-  font-size: 19px;
-  margin: 0;
   font-weight: 600;
+  color: var(--accent);
+  font-size: 16px;
 }
 
-#deconnexion-btn {
-  background-color: transparent;
-  color: var(--danger);
-  border: 1px solid var(--danger);
-  padding: 6px 12px;
-  font-size: 12px;
-}
-
-#deconnexion-btn:hover {
-  background-color: var(--danger);
-  color: white;
+.mobile-only {
+  display: none;
 }
 
 #chat-box {
@@ -112,6 +187,29 @@ h1 {
   border: 1px solid var(--border-color);
 }
 
+.message.message-entree {
+  animation: messageEntree 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.message.mine.message-entree {
+  transform-origin: bottom right;
+}
+
+.message.other.message-entree {
+  transform-origin: bottom left;
+}
+
+@keyframes messageEntree {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .message .auteur {
   font-weight: 600;
   font-size: 11px;
@@ -150,8 +248,59 @@ h1 {
   cursor: pointer;
   font-weight: 600;
   font-size: 14px;
+  transition: transform 0.15s ease, background-color 0.15s ease;
 }
 
 #message-form button:hover {
   background-color: var(--accent-hover);
+}
+
+#message-form button:active,
+#message-form button.envoi-anim {
+  transform: scale(0.9);
+}
+
+/* ---------- Mobile ---------- */
+
+@media (max-width: 700px) {
+  .app-container {
+    width: 100%;
+    height: 100dvh;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+  }
+
+  .sidebar {
+    width: 100%;
+    min-width: 100%;
+  }
+
+  .chat-container {
+    display: none;
+  }
+
+  /* Quand une conversation est ouverte, on cache la sidebar et on montre le chat */
+  .app-container.mobile-vue-chat .sidebar {
+    display: none;
+  }
+
+  .app-container.mobile-vue-chat .chat-container {
+    display: flex;
+    width: 100%;
+  }
+
+  .mobile-only {
+    display: inline-block;
+    background: transparent;
+    border: none;
+    color: var(--accent);
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  #message-form input,
+  #message-form button {
+    font-size: 16px; /* évite le zoom automatique de Safari/iOS */
+  }
 }
