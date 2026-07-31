@@ -519,3 +519,120 @@ button.danger {
   color: var(--danger);
   border: 1px solid var(--danger);
 }
+
+/* ---------- Sélecteur d'emojis ---------- */
+
+#chat-box {
+  position: relative;
+}
+
+#panneau-emoji {
+  position: absolute;
+  bottom: 58px;
+  left: 0;
+  width: 100%;
+  max-width: 330px;
+  background: var(--bg-page);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  overflow: hidden;
+}
+
+#onglets-emoji {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+  padding: 4px;
+  gap: 2px;
+}
+
+#onglets-emoji::-webkit-scrollbar {
+  height: 0;
+}
+
+.onglet-emoji {
+  background: transparent;
+  border: none;
+  font-size: 17px;
+  padding: 5px 9px;
+  cursor: pointer;
+  border-radius: 6px;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.onglet-emoji:hover {
+  background: var(--bg-message-other);
+  opacity: 0.8;
+}
+
+.onglet-emoji.actif {
+  background: var(--bg-message-mine);
+  opacity: 1;
+}
+
+#grille-emoji {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  padding: 8px;
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+#grille-emoji::-webkit-scrollbar {
+  width: 6px;
+}
+
+#grille-emoji::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 10px;
+}
+
+.bouton-emoji {
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  padding: 4px;
+  cursor: pointer;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+.bouton-emoji:hover {
+  background: var(--bg-message-other);
+  transform: scale(1.15);
+}
+
+#btn-emoji {
+  padding: 10px 12px;
+  background-color: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+#btn-emoji:hover {
+  border-color: var(--accent);
+  background-color: var(--bg-message-other);
+}
+
+/* Les messages contenant uniquement des emojis s'affichent en plus grand */
+.message .emoji-seul {
+  font-size: 30px;
+  line-height: 1.3;
+}
+
+@media (max-width: 480px) {
+  #panneau-emoji {
+    max-width: 100%;
+  }
+
+  #grille-emoji {
+    grid-template-columns: repeat(7, 1fr);
+    max-height: 160px;
+  }
+}

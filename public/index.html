@@ -10,7 +10,6 @@
 
   <div class="app-container">
 
-    <!-- Barre latérale -->
     <div class="sidebar">
       <div class="sidebar-header">
         <h1 id="titre-app" title="Messagerie">💬 Messagerie</h1>
@@ -30,7 +29,6 @@
       </div>
     </div>
 
-    <!-- Zone de chat -->
     <div class="chat-container">
       <div class="chat-header">
         <span id="titre-conversation">📻 Radio 1</span>
@@ -40,29 +38,28 @@
       <div id="chat-box">
         <div id="messages"></div>
 
-        <div id="apercu-image" class="apercu-image" style="display: none;">
-          <img id="apercu-image-src" src="" alt="Aperçu">
-          <button id="annuler-image-btn" type="button">✕</button>
+        <div id="panneau-emoji" class="cache">
+          <div id="onglets-emoji"></div>
+          <div id="grille-emoji"></div>
         </div>
 
-      <!-- Aperçu de l'image sélectionnée, avant envoi -->
-<div id="apercu-image" class="apercu-cache">
-  <img id="apercu-img" alt="Aperçu">
-  <button type="button" id="annuler-image" title="Retirer l'image">✕</button>
-</div>
+        <div id="apercu-image" class="apercu-cache">
+          <img id="apercu-img" alt="Aperçu">
+          <button type="button" id="annuler-image" title="Retirer l'image">✕</button>
+        </div>
 
-<form id="message-form">
-  <input type="file" id="input-fichier" accept="image/*" hidden>
-  <button type="button" id="btn-image" title="Envoyer une image">📎</button>
-  <input type="text" id="message-input" placeholder="Écris un message..." autocomplete="off">
-  <button type="submit" id="btn-envoyer">Envoyer</button>
-</form>
+        <form id="message-form">
+          <input type="file" id="input-fichier" accept="image/*" hidden>
+          <button type="button" id="btn-image" title="Envoyer une image">📎</button>
+          <button type="button" id="btn-emoji" title="Emojis">😀</button>
+          <input type="text" id="message-input" placeholder="Écris un message..." autocomplete="off">
+          <button type="submit" id="btn-envoyer">Envoyer</button>
+        </form>
       </div>
     </div>
 
   </div>
 
-  <!-- Fenêtre : saisie de la clé admin -->
   <div id="modal-cle" class="modal cache">
     <div class="modal-contenu">
       <h2>Accès modération</h2>
@@ -75,7 +72,6 @@
     </div>
   </div>
 
-  <!-- Fenêtre : panneau de modération -->
   <div id="modal-admin" class="modal cache">
     <div class="modal-contenu large">
       <h2>🛡️ Panneau de modération</h2>

@@ -270,6 +270,12 @@ function ajouterMessageAffiche(data) {
   if (data.texte) {
     const texteEl = document.createElement("div");
     texteEl.textContent = data.texte;
+
+    // Si le message ne contient que des emojis (max 3), on l'affiche en grand
+    if (estUniquementEmojis(data.texte)) {
+      texteEl.classList.add("emoji-seul");
+    }
+
     messageEl.appendChild(texteEl);
   }
 
@@ -290,6 +296,95 @@ function ajouterMessageAffiche(data) {
 
   messagesDiv.appendChild(messageEl);
 }
+
+// Détecte si un texte ne contient que des emojis (3 maximum)
+function estUniquementEmojis(texte) {
+  const sansEspaces = texte.replace(/\s/g, "");
+  if (!sansEspaces) return false;
+
+  const regexEmoji = /^(\p{Extended_Pictographic}|\p{Emoji_Component})+$/u;
+  if (!regexEmoji.test(sansEspaces)) return false;
+
+  // Compte approximativement le nombre d'emojis
+  const nombre = [...new Intl.Segmenter().segment(sansEspaces)].length;
+  return nombre <= 3;
+}
+
+// ---------- Sélecteur d'emojis ----------
+
+const EMOJIS = {
+  "😀": ["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","😋","😛","😜","🤪","😝","🤗","🤭","🤫","🤔","🤐","😐","😑","😶","😏","😒","🙄","😬","😔","😪","🤤","😴","😷","🤒","🤕","🥴","😵","🤯","🤠","🥳","😎","🤓","🧐","😕","😟","🙁","😮","😯","😲","😳","🥺","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈","💀","💩","🤡","👻","👽","🤖"],
+  "👍": ["👍","👎","👌","🤌","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","👇","☝️","✋","🤚","🖐️","🖖","👋","🤝","🙏","✍️","💪","🦵","👏","🙌","👐","🤲","🫶","💅","👀","👁️","👅","👄","🧠","🦷"],
+  "❤️": ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","🔥","✨","⭐","🌟","💫","💥","💯","💢","💤","🎉","🎊","🎁","🎈","🏆","🥇","🥈","🥉"],
+  "🐶": ["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧","🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🐛","🦋","🐌","🐞","🐢","🐍","🐙","🦑","🦀","🐠","🐟","🐬","🐳","🦈","🐊","🐅","🦓","🦍","🐘","🦒","🐄","🐎","🐖","🐑","🦙"],
+  "🍕": ["🍕","🍔","🍟","🌭","🥪","🌮","🌯","🥙","🧆","🥚","🍳","🥘","🍲","🥗","🍿","🧈","🍞","🥐","🥖","🥨","🧀","🥞","🧇","🥓","🍗","🍖","🍤","🍣","🍱","🍜","🍝","🍛","🍚","🍘","🍥","🥟","🍦","🍰","🎂","🧁","🍫","🍬","🍭","🍩","🍪","☕","🍵","🥤","🧃","🍺","🍻","🥂","🍷","🥃","🍾"],
+  "⚽": ["⚽","🏀","🏈","⚾","🎾","🏐","🏉","🎱","🏓","🏸","🥅","⛳","🏹","🎣","🥊","🥋","🎿","⛷️","🏂","🏋️","🤸","⛹️","🤾","🏌️","🏇","🧘","🏃","🚴","🎮","🕹️","🎲","🎯","🎰","🎳","🎸","🎹","🥁","🎺","🎷","🎤","🎧","🎬","🎨"],
+  "🚗": ["🚗","🚕","🚙","🚌","🚎","🏎️","🚓","🚑","🚒","🚐","🚚","🚛","🚜","🛴","🚲","🛵","🏍️","✈️","🚀","🛸","🚁","⛵","🚤","🛳️","🚂","🚊","🏠","🏡","🏢","🏥","🏦","🏨","🏫","⛪","🗼","🗽","🌍","🌙","☀️","⛅","🌧️","⛈️","❄️","🌈","🔥","💧","🌊"]
+};
+
+const panneauEmoji = document.getElementById("panneau-emoji");
+const btnEmoji = document.getElementById("btn-emoji");
+const ongletsEmoji = document.getElementById("onglets-emoji");
+const grilleEmoji = document.getElementById("grille-emoji");
+
+function construireSelecteurEmoji() {
+  const categories = Object.keys(EMOJIS);
+
+  categories.forEach((cat, index) => {
+    const onglet = document.createElement("button");
+    onglet.type = "button";
+    onglet.textContent = cat;
+    onglet.classList.add("onglet-emoji");
+    if (index === 0) onglet.classList.add("actif");
+
+    onglet.addEventListener("click", () => {
+      document.querySelectorAll(".onglet-emoji").forEach(o => o.classList.remove("actif"));
+      onglet.classList.add("actif");
+      afficherCategorie(cat);
+    });
+
+    ongletsEmoji.appendChild(onglet);
+  });
+
+  afficherCategorie(categories[0]);
+}
+
+function afficherCategorie(categorie) {
+  grilleEmoji.innerHTML = "";
+  EMOJIS[categorie].forEach(emoji => {
+    const bouton = document.createElement("button");
+    bouton.type = "button";
+    bouton.textContent = emoji;
+    bouton.classList.add("bouton-emoji");
+    bouton.addEventListener("click", () => insererEmoji(emoji));
+    grilleEmoji.appendChild(bouton);
+  });
+}
+
+// Insère l'emoji à la position du curseur dans le champ de texte
+function insererEmoji(emoji) {
+  const debut = messageInput.selectionStart;
+  const fin = messageInput.selectionEnd;
+  const texte = messageInput.value;
+
+  messageInput.value = texte.slice(0, debut) + emoji + texte.slice(fin);
+  messageInput.focus();
+  messageInput.selectionStart = messageInput.selectionEnd = debut + emoji.length;
+}
+
+btnEmoji.addEventListener("click", (event) => {
+  event.stopPropagation();
+  panneauEmoji.classList.toggle("cache");
+});
+
+// Ferme le panneau si on clique ailleurs
+document.addEventListener("click", (event) => {
+  if (!panneauEmoji.contains(event.target) && event.target !== btnEmoji) {
+    panneauEmoji.classList.add("cache");
+  }
+});
+
+construireSelecteurEmoji();
 
 // ---------- Gestion des images ----------
 
