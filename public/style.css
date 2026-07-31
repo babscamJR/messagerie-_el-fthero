@@ -160,10 +160,12 @@ body {
 #messages {
   flex: 1;
   overflow-y: auto;
-  padding: 10px 4px;
+  padding: 22px 4px 10px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  position: relative;
+  z-index: 1;
 }
 
 #messages::-webkit-scrollbar {
@@ -275,6 +277,7 @@ body {
   display: flex;
   gap: 8px;
   margin-top: 10px;
+  position: relative;
 }
 
 #message-form input {
@@ -1064,4 +1067,70 @@ button.danger {
 /* Fond allégé sur mobile (moins de cubes, moins de calcul) */
 @media (max-width: 700px) {
   #fond-cubes { opacity: 0.16; }
+}
+
+/* ---------- Flou progressif en haut de la liste des messages ---------- */
+
+.flou-progressif {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 72px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.flou-haut {
+  top: 0;
+}
+
+/* Chaque couche floute un peu plus, sur une bande un peu plus haute.
+   L'empilement donne une transition douce plutôt qu'une coupure nette. */
+.flou-couche {
+  position: absolute;
+  inset: 0;
+}
+
+.flou-couche:nth-child(1) {
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 25%, transparent 50%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 25%, transparent 50%);
+}
+
+.flou-couche:nth-child(2) {
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 15%, transparent 38%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 15%, transparent 38%);
+}
+
+.flou-couche:nth-child(3) {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 8%, transparent 26%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 8%, transparent 26%);
+}
+
+.flou-couche:nth-child(4) {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 14%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 14%);
+}
+
+/* Léger fondu de couleur pour adoucir encore la transition */
+.flou-progressif::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, var(--bg-card) 0%, transparent 70%);
+  opacity: 0.85;
+}
+
+/* Le formulaire et l'aperçu restent au-dessus du flou */
+#message-form,
+#apercu-image,
+#panneau-emoji {
+  z-index: 10;
 }
