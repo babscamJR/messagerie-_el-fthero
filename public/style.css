@@ -24,21 +24,16 @@ html, body {
 body {
   font-family: 'Segoe UI', Arial, sans-serif;
   background-color: var(--bg-page);
-  display: flex;
-  justify-content: center;
-  align-items: center;
   margin: 0;
   color: var(--text-primary);
   height: 100dvh;
+  overflow: hidden;
 }
 
 .app-container {
   background: var(--bg-card);
-  width: 760px;
-  height: 600px;
-  border-radius: 12px;
-  border: 1px solid var(--border-color);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  width: 100%;
+  height: 100dvh;
   display: flex;
   overflow: hidden;
 }
@@ -46,8 +41,8 @@ body {
 /* ---------- Sidebar ---------- */
 
 .sidebar {
-  width: 220px;
-  min-width: 220px;
+  width: 260px;
+  min-width: 260px;
   background-color: var(--bg-sidebar);
   border-right: 1px solid var(--border-color);
   display: flex;
@@ -123,8 +118,20 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 20px;
+  padding: 20px 24px;
   min-width: 0;
+}
+
+/* Sur très grand écran, on centre le contenu pour éviter des lignes trop longues */
+#messages,
+#message-form,
+.chat-header,
+#liste-publications,
+#btn-nouvelle-pub {
+  width: 100%;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .chat-header {
@@ -303,17 +310,13 @@ body {
 /* ---------- Mobile ---------- */
 
 @media (max-width: 700px) {
-  .app-container {
-    width: 100%;
-    height: 100dvh;
-    border-radius: 0;
-    border: none;
-    box-shadow: none;
-  }
-
   .sidebar {
     width: 100%;
     min-width: 100%;
+  }
+
+  .chat-container {
+    padding: 16px;
   }
 
   .chat-container {
