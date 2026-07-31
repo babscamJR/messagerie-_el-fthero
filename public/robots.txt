@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://elfthero-message.onrender.com/sitemap.xml
