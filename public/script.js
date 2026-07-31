@@ -451,6 +451,36 @@ menuSupprimer.addEventListener("click", () => {
 
 rechercheUtilisateur.addEventListener("input", afficherListeUtilisateurs);
 
+function construireListeSalons() {
+  listeSalonsDiv.innerHTML = "";
+
+  Object.keys(salonsDisponibles).forEach(id => {
+    const salon = salonsDisponibles[id];
+    const item = document.createElement("div");
+    item.classList.add("salon-item");
+    item.dataset.salonId = id;
+    item.textContent = salon.nom;
+
+    // Petit cadenas sur les salons en lecture seule pour les non-admins
+    if (salon.adminSeul && !jeSuisAdmin) {
+      const cadenas = document.createElement("span");
+      cadenas.classList.add("cadenas");
+      cadenas.textContent = "🔒";
+      cadenas.title = "Lecture seule";
+      item.appendChild(cadenas);
+    }
+
+    item.addEventListener("click", () => ouvrirSalon(id));
+    listeSalonsDiv.appendChild(item);
+  });
+
+  // Marque le salon actif
+  if (conversationActuelle.type === "salon") {
+    const actif = listeSalonsDiv.querySelector(`[data-salon-id="${conversationActuelle.id}"]`);
+    if (actif) actif.classList.add("actif");
+  }
+}
+
 function marquerActif(element) {
   document.querySelectorAll(".salon-item").forEach(el => el.classList.remove("actif"));
   element.classList.add("actif");
