@@ -1,31 +1,20 @@
 // server.js
+require("dotenv").config();
+console.log("URL détectée :", process.env.DATABASE_URL ? "OUI" : "NON");
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const session = require("express-session");
+const pgSession = require("connect-pg-simple")(session);
 const bcrypt = require("bcryptjs");
-const fs = require("fs");
-const path = require("path");
+
+const { pool, initialiserBase } = require("./db");
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-const USERS_FILE = path.join(__dirname, "users.json");
-
-function chargerUtilisateurs() {
-  if (!fs.existsSync(USERS_FILE)) {
-    fs.writeFileSync(USERS_FILE, "[]");
-  }
-  return JSON.parse(fs.readFileSync(USERS_FILE, "utf-8"));
-}
-
-function sauvegarderUtilisateurs(utilisateurs) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(utilisateurs, null, 2));
-}
-
-// Donne toujours le même identifiant pour une conversation privée entre 2 pseudos,
-// peu importe qui a démarré la conversation (ordre alphabétique)
+// Donne toujours le même identifiant pour une conversation entre 2 pseudos
 function idConversation(pseudoA, pseudoB) {
   return [pseudoA, pseudoB].sort().join("|");
 }
@@ -33,56 +22,82 @@ function idConversation(pseudoA, pseudoB) {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Les sessions sont stockées en base (elles survivent aux redémarrages)
 const sessionMiddleware = session({
-  secret: "change-cette-phrase-secrete-plus-tard",
+  store: new pgSession({
+    pool: pool,
+    tableName: "sessions",
+    createTableIfMissing: true
+  }),
+  secret: process.env.SESSION_SECRET || "secret-de-developpement-a-changer",
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 1000 * 60 * 60 * 24 }
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 } // 7 jours
 });
 app.use(sessionMiddleware);
 
 app.use(express.static("public"));
 
-// ---------- ROUTES D'AUTHENTIFICATION ----------
+// ---------- AUTHENTIFICATION ----------
 
-app.post("/inscription", (req, res) => {
-  const { pseudo, motdepasse } = req.body;
+app.post("/inscription", async (req, res) => {
+  try {
+    const { pseudo, motdepasse } = req.body;
 
-  if (!pseudo || !motdepasse) {
-    return res.status(400).json({ erreur: "Pseudo et mot de passe requis." });
+    if (!pseudo || !motdepasse) {
+      return res.status(400).json({ erreur: "Pseudo et mot de passe requis." });
+    }
+
+    const existant = await pool.query(
+      "SELECT id FROM utilisateurs WHERE LOWER(pseudo) = LOWER($1)",
+      [pseudo]
+    );
+
+    if (existant.rows.length > 0) {
+      return res.status(400).json({ erreur: "Ce pseudo est déjà pris." });
+    }
+
+    const motdepasseCrypte = bcrypt.hashSync(motdepasse, 10);
+
+    await pool.query(
+      "INSERT INTO utilisateurs (pseudo, motdepasse) VALUES ($1, $2)",
+      [pseudo, motdepasseCrypte]
+    );
+
+    req.session.pseudo = pseudo;
+    res.json({ succes: true });
+  } catch (err) {
+    console.error("Erreur inscription :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
   }
-
-  const utilisateurs = chargerUtilisateurs();
-
-  const dejaExistant = utilisateurs.find(u => u.pseudo.toLowerCase() === pseudo.toLowerCase());
-  if (dejaExistant) {
-    return res.status(400).json({ erreur: "Ce pseudo est déjà pris." });
-  }
-
-  const motdepasseCrypte = bcrypt.hashSync(motdepasse, 10);
-  utilisateurs.push({ pseudo, motdepasse: motdepasseCrypte });
-  sauvegarderUtilisateurs(utilisateurs);
-
-  req.session.pseudo = pseudo;
-  res.json({ succes: true });
 });
 
-app.post("/connexion", (req, res) => {
-  const { pseudo, motdepasse } = req.body;
-  const utilisateurs = chargerUtilisateurs();
+app.post("/connexion", async (req, res) => {
+  try {
+    const { pseudo, motdepasse } = req.body;
 
-  const utilisateur = utilisateurs.find(u => u.pseudo.toLowerCase() === pseudo.toLowerCase());
-  if (!utilisateur) {
-    return res.status(400).json({ erreur: "Pseudo ou mot de passe incorrect." });
+    const resultat = await pool.query(
+      "SELECT pseudo, motdepasse FROM utilisateurs WHERE LOWER(pseudo) = LOWER($1)",
+      [pseudo]
+    );
+
+    if (resultat.rows.length === 0) {
+      return res.status(400).json({ erreur: "Pseudo ou mot de passe incorrect." });
+    }
+
+    const utilisateur = resultat.rows[0];
+    const valide = bcrypt.compareSync(motdepasse, utilisateur.motdepasse);
+
+    if (!valide) {
+      return res.status(400).json({ erreur: "Pseudo ou mot de passe incorrect." });
+    }
+
+    req.session.pseudo = utilisateur.pseudo;
+    res.json({ succes: true });
+  } catch (err) {
+    console.error("Erreur connexion :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
   }
-
-  const motdepasseValide = bcrypt.compareSync(motdepasse, utilisateur.motdepasse);
-  if (!motdepasseValide) {
-    return res.status(400).json({ erreur: "Pseudo ou mot de passe incorrect." });
-  }
-
-  req.session.pseudo = utilisateur.pseudo;
-  res.json({ succes: true });
 });
 
 app.post("/deconnexion", (req, res) => {
@@ -99,30 +114,30 @@ app.get("/moi", (req, res) => {
   }
 });
 
-// Liste de tous les comptes inscrits (pour choisir avec qui discuter en privé)
-app.get("/utilisateurs", (req, res) => {
+app.get("/utilisateurs", async (req, res) => {
   if (!req.session.pseudo) {
     return res.status(401).json({ erreur: "Non connecté." });
   }
-  const utilisateurs = chargerUtilisateurs();
-  const pseudos = utilisateurs
-    .map(u => u.pseudo)
-    .filter(p => p !== req.session.pseudo); // on s'exclut soi-même
-  res.json({ utilisateurs: pseudos });
+
+  try {
+    const resultat = await pool.query(
+      "SELECT pseudo FROM utilisateurs WHERE pseudo != $1 ORDER BY pseudo",
+      [req.session.pseudo]
+    );
+    res.json({ utilisateurs: resultat.rows.map(r => r.pseudo) });
+  } catch (err) {
+    console.error("Erreur liste utilisateurs :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
 });
 
-// ---------- SOCKET.IO (chat en temps réel) ----------
+// ---------- SOCKET.IO ----------
 
 io.engine.use(sessionMiddleware);
 
-// Messages stockés en mémoire (perdus si le serveur redémarre)
-const messagesPublics = [];      // { auteur, texte, date }
-const messagesPrives = {};        // { "pseudoA|pseudoB": [ { auteur, texte, date } ] }
-
-// Associe chaque pseudo connecté à son socket (pour lui envoyer un message privé)
 const socketsParPseudo = {};
 
-io.on("connection", (socket) => {
+io.on("connection", async (socket) => {
   const session = socket.request.session;
 
   if (!session || !session.pseudo) {
@@ -132,61 +147,83 @@ io.on("connection", (socket) => {
 
   const monPseudo = session.pseudo;
   socketsParPseudo[monPseudo] = socket.id;
-
   console.log(`${monPseudo} s'est connecté`);
 
-  // Envoie l'historique du salon public à la connexion
-  socket.emit("historique_public", messagesPublics);
+  // Envoie les 100 derniers messages publics
+  try {
+    const resultat = await pool.query(
+      "SELECT auteur, texte, date FROM messages_publics ORDER BY id DESC LIMIT 100"
+    );
+    socket.emit("historique_public", resultat.rows.reverse());
+  } catch (err) {
+    console.error("Erreur historique public :", err);
+  }
 
   // --- Salon public "Radio 1" ---
-  socket.on("message_public", (data) => {
-    const message = {
-      auteur: monPseudo,
-      texte: data.texte,
-      date: new Date().toISOString()
-    };
-    messagesPublics.push(message);
-    io.emit("message_public", message);
+  socket.on("message_public", async (data) => {
+    const texte = (data.texte || "").trim();
+    if (!texte) return;
+
+    try {
+      const resultat = await pool.query(
+        "INSERT INTO messages_publics (auteur, texte) VALUES ($1, $2) RETURNING auteur, texte, date",
+        [monPseudo, texte]
+      );
+      io.emit("message_public", resultat.rows[0]);
+    } catch (err) {
+      console.error("Erreur message public :", err);
+    }
   });
 
   // --- Messages privés ---
-  socket.on("demander_historique_prive", (data) => {
-    const conversationId = idConversation(monPseudo, data.destinataire);
-    const historique = messagesPrives[conversationId] || [];
-    socket.emit("historique_prive", {
-      avec: data.destinataire,
-      messages: historique
-    });
+  socket.on("demander_historique_prive", async (data) => {
+    try {
+      const conversationId = idConversation(monPseudo, data.destinataire);
+      const resultat = await pool.query(
+        "SELECT auteur, texte, date FROM messages_prives WHERE conversation_id = $1 ORDER BY id ASC LIMIT 200",
+        [conversationId]
+      );
+      socket.emit("historique_prive", {
+        avec: data.destinataire,
+        messages: resultat.rows
+      });
+    } catch (err) {
+      console.error("Erreur historique privé :", err);
+    }
   });
 
-  socket.on("message_prive", (data) => {
-    const conversationId = idConversation(monPseudo, data.destinataire);
+  socket.on("message_prive", async (data) => {
+    const texte = (data.texte || "").trim();
+    if (!texte || !data.destinataire) return;
 
-    const message = {
-      auteur: monPseudo,
-      texte: data.texte,
-      date: new Date().toISOString()
-    };
+    try {
+      const conversationId = idConversation(monPseudo, data.destinataire);
 
-    if (!messagesPrives[conversationId]) {
-      messagesPrives[conversationId] = [];
-    }
-    messagesPrives[conversationId].push(message);
+      const resultat = await pool.query(
+        `INSERT INTO messages_prives (conversation_id, auteur, destinataire, texte)
+         VALUES ($1, $2, $3, $4) RETURNING auteur, texte, date`,
+        [conversationId, monPseudo, data.destinataire, texte]
+      );
 
-    // Envoie au destinataire (s'il est connecté)
-    const socketDestinataire = socketsParPseudo[data.destinataire];
-    if (socketDestinataire) {
-      io.to(socketDestinataire).emit("message_prive", {
-        avec: monPseudo,
+      const message = resultat.rows[0];
+
+      // Envoie au destinataire s'il est connecté
+      const socketDestinataire = socketsParPseudo[data.destinataire];
+      if (socketDestinataire) {
+        io.to(socketDestinataire).emit("message_prive", {
+          avec: monPseudo,
+          message
+        });
+      }
+
+      // Renvoie à l'expéditeur
+      socket.emit("message_prive", {
+        avec: data.destinataire,
         message
       });
+    } catch (err) {
+      console.error("Erreur message privé :", err);
     }
-
-    // Renvoie aussi à l'expéditeur (pour afficher son propre message)
-    socket.emit("message_prive", {
-      avec: data.destinataire,
-      message
-    });
   });
 
   socket.on("disconnect", () => {
@@ -195,7 +232,17 @@ io.on("connection", (socket) => {
   });
 });
 
+// ---------- DÉMARRAGE ----------
+
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Serveur lancé sur http://localhost:${PORT}`);
-});
+
+initialiserBase()
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`Serveur lancé sur http://localhost:${PORT}`);
+    });
+  })
+  .catch(err => {
+    console.error("Impossible d'initialiser la base de données :", err);
+    process.exit(1);
+  });

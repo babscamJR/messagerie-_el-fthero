@@ -1,7 +1,7 @@
 {
   "name": "messagerie",
-  "version": "2.0.0",
-  "description": "Petite messagerie en temps réel avec comptes utilisateurs",
+  "version": "3.0.0",
+  "description": "Messagerie en temps réel avec comptes et base de données PostgreSQL",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -10,6 +10,9 @@
     "express": "^4.19.2",
     "socket.io": "^4.7.5",
     "express-session": "^1.18.0",
-    "bcryptjs": "^2.4.3"
+    "bcryptjs": "^2.4.3",
+    "pg": "^8.11.5",
+    "connect-pg-simple": "^9.0.1",
+    "dotenv": "^16.4.5"
   }
 }
