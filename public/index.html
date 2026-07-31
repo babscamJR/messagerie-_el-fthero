@@ -41,6 +41,7 @@
 
       <div class="sidebar-section">
         <div class="sidebar-titre">Messages privés</div>
+        <input type="text" id="recherche-utilisateur" placeholder="🔍 Rechercher un pseudo..." autocomplete="off">
         <div id="liste-utilisateurs"></div>
       </div>
     </div>
@@ -65,6 +66,8 @@
       </div>
 
       <div id="chat-box">
+        <div id="indicateur-frappe" class="cache"></div>
+
         <div class="flou-progressif flou-haut" aria-hidden="true">
           <div class="flou-couche"></div>
           <div class="flou-couche"></div>
@@ -168,6 +171,14 @@
         <button id="fermer-groupes-attente" class="secondaire">Fermer</button>
       </div>
     </div>
+  </div>
+
+  <!-- Menu contextuel admin sur un utilisateur -->
+  <div id="menu-utilisateur" class="menu-contextuel cache">
+    <div class="menu-entete" id="menu-pseudo"></div>
+    <button id="menu-message">💬 Envoyer un message</button>
+    <button id="menu-bannir">🚫 Bannir</button>
+    <button id="menu-supprimer" class="danger-texte">🗑 Supprimer le compte</button>
   </div>
 
   <div id="modal-cle" class="modal cache">

@@ -62,6 +62,24 @@ const fermerGroupesAttente = document.getElementById("fermer-groupes-attente");
 
 let mesGroupes = [];
 
+// Recherche, présence et frappe
+const rechercheUtilisateur = document.getElementById("recherche-utilisateur");
+const indicateurFrappe = document.getElementById("indicateur-frappe");
+const menuUtilisateur = document.getElementById("menu-utilisateur");
+const menuPseudo = document.getElementById("menu-pseudo");
+const menuMessage = document.getElementById("menu-message");
+const menuBannir = document.getElementById("menu-bannir");
+const menuSupprimer = document.getElementById("menu-supprimer");
+
+let tousLesUtilisateurs = [];      // [{ pseudo, is_banni }]
+let personnesEnLigne = new Set();
+let cibleMenu = null;               // pseudo visé par le menu contextuel
+
+// Qui écrit, dans quelle conversation : { "prive:lino": timeout }
+const enTrainDEcrire = {};
+let minuteurFrappe = null;
+let frappeEnvoyee = false;
+
 let publicationOuverte = null;
 let publicationsCache = [];
 let pubFichierSelectionne = null;
@@ -298,49 +316,140 @@ async function supprimerMessage(id, type) {
 }
 
 async function chargerListeUtilisateurs() {
-  const reponse = await fetch("/utilisateurs");
-  const data = await reponse.json();
+  try {
+    // En tant qu'admin on récupère aussi le statut de bannissement
+    const url = jeSuisAdmin ? "/admin/utilisateurs" : "/utilisateurs";
+    const reponse = await fetch(url);
+    const data = await reponse.json();
 
+    if (jeSuisAdmin && data.utilisateurs) {
+      tousLesUtilisateurs = data.utilisateurs
+        .filter(u => u.pseudo !== monPseudo)
+        .map(u => ({ pseudo: u.pseudo, banni: u.is_banni, admin: u.is_admin }));
+    } else if (data.utilisateurs) {
+      tousLesUtilisateurs = data.utilisateurs.map(p => ({ pseudo: p, banni: false, admin: false }));
+    }
+
+    afficherListeUtilisateurs();
+  } catch (err) {
+    console.error("Erreur chargement utilisateurs :", err);
+  }
+}
+
+function afficherListeUtilisateurs() {
+  const filtre = (rechercheUtilisateur.value || "").trim().toLowerCase();
   listeUtilisateursDiv.innerHTML = "";
-  data.utilisateurs.forEach(pseudo => {
+
+  const resultats = tousLesUtilisateurs
+    .filter(u => u.pseudo.toLowerCase().includes(filtre))
+    .sort((a, b) => {
+      // Les personnes en ligne apparaissent en premier
+      const aEnLigne = personnesEnLigne.has(a.pseudo) ? 0 : 1;
+      const bEnLigne = personnesEnLigne.has(b.pseudo) ? 0 : 1;
+      if (aEnLigne !== bEnLigne) return aEnLigne - bEnLigne;
+      return a.pseudo.localeCompare(b.pseudo);
+    });
+
+  if (resultats.length === 0) {
+    const vide = document.createElement("div");
+    vide.classList.add("groupe-vide");
+    vide.textContent = filtre ? "Aucun résultat" : "Aucun utilisateur";
+    listeUtilisateursDiv.appendChild(vide);
+    return;
+  }
+
+  resultats.forEach(u => {
     const item = document.createElement("div");
-    item.classList.add("salon-item");
-    item.textContent = "👤 " + pseudo;
-    item.dataset.pseudo = pseudo;
-    item.addEventListener("click", () => ouvrirConversationPrivee(pseudo));
+    item.classList.add("salon-item", "item-utilisateur");
+    item.dataset.pseudo = u.pseudo;
+
+    const pastille = document.createElement("span");
+    pastille.classList.add("pastille");
+    if (personnesEnLigne.has(u.pseudo)) pastille.classList.add("en-ligne");
+    pastille.title = personnesEnLigne.has(u.pseudo) ? "En ligne" : "Hors ligne";
+
+    const nom = document.createElement("span");
+    nom.classList.add("nom-utilisateur");
+    nom.textContent = u.pseudo;
+
+    item.append(pastille, nom);
+
+    if (u.banni) {
+      const badge = document.createElement("span");
+      badge.classList.add("badge", "banni");
+      badge.textContent = "banni";
+      item.appendChild(badge);
+      item.classList.add("est-banni");
+    }
+
+    // Clic simple : ouvrir la conversation
+    item.addEventListener("click", () => ouvrirConversationPrivee(u.pseudo));
+
+    // Admin : clic droit ou appui long ouvre le menu de modération
+    if (jeSuisAdmin && !u.admin) {
+      item.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        ouvrirMenuUtilisateur(u, e.clientX, e.clientY);
+      });
+
+      let minuteurAppui = null;
+      item.addEventListener("touchstart", (e) => {
+        minuteurAppui = setTimeout(() => {
+          const t = e.touches[0];
+          ouvrirMenuUtilisateur(u, t.clientX, t.clientY);
+        }, 550);
+      });
+      const annuler = () => clearTimeout(minuteurAppui);
+      item.addEventListener("touchend", annuler);
+      item.addEventListener("touchmove", annuler);
+    }
+
     listeUtilisateursDiv.appendChild(item);
   });
 }
 
-function construireListeSalons() {
-  listeSalonsDiv.innerHTML = "";
+function ouvrirMenuUtilisateur(utilisateur, x, y) {
+  cibleMenu = utilisateur;
+  menuPseudo.textContent = utilisateur.pseudo;
+  menuBannir.textContent = utilisateur.banni ? "✅ Débannir" : "🚫 Bannir";
 
-  Object.keys(salonsDisponibles).forEach(id => {
-    const salon = salonsDisponibles[id];
-    const item = document.createElement("div");
-    item.classList.add("salon-item");
-    item.dataset.salonId = id;
-    item.textContent = salon.nom;
+  menuUtilisateur.classList.remove("cache");
 
-    // Petit cadenas sur les salons en lecture seule pour les non-admins
-    if (salon.adminSeul && !jeSuisAdmin) {
-      const cadenas = document.createElement("span");
-      cadenas.classList.add("cadenas");
-      cadenas.textContent = "🔒";
-      cadenas.title = "Lecture seule";
-      item.appendChild(cadenas);
-    }
+  // Garde le menu dans l'écran
+  const largeur = menuUtilisateur.offsetWidth;
+  const hauteur = menuUtilisateur.offsetHeight;
+  const posX = Math.min(x, window.innerWidth - largeur - 10);
+  const posY = Math.min(y, window.innerHeight - hauteur - 10);
 
-    item.addEventListener("click", () => ouvrirSalon(id));
-    listeSalonsDiv.appendChild(item);
-  });
-
-  // Marque le salon actif
-  if (conversationActuelle.type === "salon") {
-    const actif = listeSalonsDiv.querySelector(`[data-salon-id="${conversationActuelle.id}"]`);
-    if (actif) actif.classList.add("actif");
-  }
+  menuUtilisateur.style.left = posX + "px";
+  menuUtilisateur.style.top = posY + "px";
 }
+
+function fermerMenuUtilisateur() {
+  menuUtilisateur.classList.add("cache");
+  cibleMenu = null;
+}
+
+document.addEventListener("click", (e) => {
+  if (!menuUtilisateur.contains(e.target)) fermerMenuUtilisateur();
+});
+
+menuMessage.addEventListener("click", () => {
+  if (cibleMenu) ouvrirConversationPrivee(cibleMenu.pseudo);
+  fermerMenuUtilisateur();
+});
+
+menuBannir.addEventListener("click", () => {
+  if (cibleMenu) basculerBannissement(cibleMenu.pseudo, !cibleMenu.banni);
+  fermerMenuUtilisateur();
+});
+
+menuSupprimer.addEventListener("click", () => {
+  if (cibleMenu) supprimerCompte(cibleMenu.pseudo);
+  fermerMenuUtilisateur();
+});
+
+rechercheUtilisateur.addEventListener("input", afficherListeUtilisateurs);
 
 function marquerActif(element) {
   document.querySelectorAll(".salon-item").forEach(el => el.classList.remove("actif"));
@@ -357,6 +466,8 @@ function ouvrirSalon(id) {
   if (item) marquerActif(item);
 
   appContainer.classList.add("mobile-vue-chat");
+  arreterFrappe();
+  majIndicateurFrappe();
   majFondCubes();
   masquerActionsGroupe();
 
@@ -399,14 +510,18 @@ function mettreAJourZoneSaisie() {
 }
 
 function ouvrirConversationPrivee(pseudo) {
+  arreterFrappe();
   conversationActuelle = { type: "prive", id: pseudo };
   titreConversation.textContent = "👤 " + pseudo;
+  majIndicateurFrappe();
 
   const item = [...document.querySelectorAll("#liste-utilisateurs .salon-item")]
     .find(el => el.dataset.pseudo === pseudo);
   if (item) marquerActif(item);
 
   appContainer.classList.add("mobile-vue-chat");
+  arreterFrappe();
+  majIndicateurFrappe();
   majFondCubes();
   masquerActionsGroupe();
   forumBox.classList.add("cache");
@@ -429,6 +544,66 @@ function reinitialiserImagePub() {
   pubApercuImg.src = "";
 }
 
+// ---------- Indicateur "est en train d'écrire" ----------
+
+// Prévient les autres qu'on écrit, sans spammer le serveur
+function signalerFrappe() {
+  if (!socket || conversationActuelle.type === "salon" && conversationActuelle.id === "radio2") return;
+
+  const contexte = conversationActuelle.type === "salon" ? "salon" : conversationActuelle.type;
+
+  if (!frappeEnvoyee) {
+    socket.emit("frappe", { contexte, id: conversationActuelle.id, actif: true });
+    frappeEnvoyee = true;
+  }
+
+  clearTimeout(minuteurFrappe);
+  minuteurFrappe = setTimeout(() => {
+    socket.emit("frappe", { contexte, id: conversationActuelle.id, actif: false });
+    frappeEnvoyee = false;
+  }, 2500);
+}
+
+function arreterFrappe() {
+  if (!socket || !frappeEnvoyee) return;
+  const contexte = conversationActuelle.type === "salon" ? "salon" : conversationActuelle.type;
+  socket.emit("frappe", { contexte, id: conversationActuelle.id, actif: false });
+  frappeEnvoyee = false;
+  clearTimeout(minuteurFrappe);
+}
+
+function cleFrappe(contexte, id) {
+  return contexte + ":" + id;
+}
+
+function majIndicateurFrappe() {
+  const cle = cleFrappe(
+    conversationActuelle.type === "salon" ? "salon" : conversationActuelle.type,
+    conversationActuelle.id
+  );
+
+  const liste = enTrainDEcrire[cle] ? Object.keys(enTrainDEcrire[cle]) : [];
+
+  if (liste.length === 0) {
+    indicateurFrappe.classList.add("cache");
+    indicateurFrappe.textContent = "";
+    return;
+  }
+
+  let texte;
+  if (liste.length === 1) {
+    texte = `${liste[0]} est en train d'écrire`;
+  } else if (liste.length === 2) {
+    texte = `${liste[0]} et ${liste[1]} sont en train d'écrire`;
+  } else {
+    texte = `${liste.length} personnes sont en train d'écrire`;
+  }
+
+  indicateurFrappe.innerHTML =
+    `<span class="points-frappe"><i></i><i></i><i></i></span> ${texte}`;
+  indicateurFrappe.classList.remove("cache");
+}
+
 // ---------- Zone de saisie extensible ----------
 
 // Recalcule la hauteur pour coller au contenu
@@ -437,7 +612,10 @@ function ajusterHauteurSaisie() {
   messageInput.style.height = messageInput.scrollHeight + "px";
 }
 
-messageInput.addEventListener("input", ajusterHauteurSaisie);
+messageInput.addEventListener("input", () => {
+  ajusterHauteurSaisie();
+  signalerFrappe();
+});
 
 // Entrée passe simplement à la ligne : l'envoi se fait uniquement
 // via le bouton "Envoyer" (comportement natif du textarea, rien à intercepter)
@@ -521,8 +699,10 @@ function ouvrirGroupe(id) {
   const groupe = mesGroupes.find(g => g.id === id);
   if (!groupe) return;
 
+  arreterFrappe();
   conversationActuelle = { type: "groupe", id };
   titreConversation.textContent = "👥 " + groupe.titre;
+  majIndicateurFrappe();
 
   const item = listeGroupes.querySelector(`[data-groupe-id="${id}"]`);
   if (item) marquerActif(item);
@@ -1108,6 +1288,7 @@ function demarrerChat() {
 
     messageInput.value = "";
     ajusterHauteurSaisie();
+    arreterFrappe();
     reinitialiserImage();
   });
 
@@ -1146,6 +1327,33 @@ function demarrerChat() {
   socket.on("erreur_envoi", (data) => {
     alert(data.message);
     pubErreur.textContent = data.message;
+  });
+
+  // ----- Présence et frappe -----
+
+  socket.on("presence", (data) => {
+    personnesEnLigne = new Set(data.enLigne);
+    afficherListeUtilisateurs();
+  });
+
+  socket.on("frappe", (data) => {
+    const cle = cleFrappe(data.contexte, data.id);
+
+    if (!enTrainDEcrire[cle]) enTrainDEcrire[cle] = {};
+
+    if (data.actif) {
+      // Filet de sécurité : on efface au bout de 5s même sans signal d'arrêt
+      clearTimeout(enTrainDEcrire[cle][data.pseudo]);
+      enTrainDEcrire[cle][data.pseudo] = setTimeout(() => {
+        delete enTrainDEcrire[cle][data.pseudo];
+        majIndicateurFrappe();
+      }, 5000);
+    } else {
+      clearTimeout(enTrainDEcrire[cle][data.pseudo]);
+      delete enTrainDEcrire[cle][data.pseudo];
+    }
+
+    majIndicateurFrappe();
   });
 
   // ----- Événements des groupes -----

@@ -498,6 +498,11 @@ io.engine.use(sessionMiddleware);
 
 const socketsParPseudo = {};
 
+// Envoie à tout le monde la liste des pseudos actuellement connectés
+function diffuserPresence() {
+  io.emit("presence", { enLigne: Object.keys(socketsParPseudo) });
+}
+
 // Déconnecte de force un utilisateur (utilisé lors d'un bannissement)
 function deconnecterUtilisateur(pseudo) {
   const socketId = socketsParPseudo[pseudo];
@@ -539,6 +544,7 @@ io.on("connection", async (socket) => {
 
   socketsParPseudo[monPseudo] = socket.id;
   console.log(`${monPseudo} s'est connecté`);
+  diffuserPresence();
 
   // Envoie la liste des salons disponibles au client
   socket.emit("liste_salons", SALONS);
@@ -1044,9 +1050,39 @@ io.on("connection", async (socket) => {
     }
   });
 
+  // ---------- Indicateur "est en train d'écrire" ----------
+
+  socket.on("frappe", (data) => {
+    const info = {
+      pseudo: monPseudo,
+      contexte: data.contexte,   // "salon", "prive" ou "groupe"
+      id: data.id,
+      actif: data.actif === true
+    };
+
+    if (data.contexte === "prive") {
+      // Uniquement au destinataire
+      const cible = socketsParPseudo[data.id];
+      if (cible) io.to(cible).emit("frappe", { ...info, id: monPseudo });
+    } else if (data.contexte === "groupe") {
+      pool.query("SELECT pseudo FROM membres_groupe WHERE groupe_id = $1", [data.id])
+        .then(r => {
+          r.rows.forEach(m => {
+            if (m.pseudo === monPseudo) return;
+            const s = socketsParPseudo[m.pseudo];
+            if (s) io.to(s).emit("frappe", info);
+          });
+        })
+        .catch(err => console.error("Erreur frappe groupe :", err));
+    } else {
+      socket.broadcast.emit("frappe", info);
+    }
+  });
+
   socket.on("disconnect", () => {
     console.log(`${monPseudo} s'est déconnecté`);
     delete socketsParPseudo[monPseudo];
+    diffuserPresence();
   });
 });
 
