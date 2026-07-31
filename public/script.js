@@ -3,15 +3,45 @@
 let monPseudo = "";
 let socket = null;
 
-// "public" ou le pseudo de la personne avec qui on discute en privé
-let conversationActuelle = "public";
+// Conversation active : { type: "salon", id: "radio1" } ou { type: "prive", id: "pseudo" }
+let conversationActuelle = { type: "salon", id: "radio1" };
+
+// Liste des salons reçue du serveur
+let salonsDisponibles = {};
 
 const messagesDiv = document.getElementById("messages");
 const messageForm = document.getElementById("message-form");
 const messageInput = document.getElementById("message-input");
 const deconnexionBtn = document.getElementById("deconnexion-btn");
 const listeUtilisateursDiv = document.getElementById("liste-utilisateurs");
-const btnRadio1 = document.getElementById("btn-radio1");
+const listeSalonsDiv = document.getElementById("liste-salons");
+
+// Forum
+const forumBox = document.getElementById("forum-box");
+const chatBox = document.getElementById("chat-box");
+const listePublications = document.getElementById("liste-publications");
+const btnNouvellePub = document.getElementById("btn-nouvelle-pub");
+const modalPublication = document.getElementById("modal-publication");
+const pubTitre = document.getElementById("pub-titre");
+const pubContenu = document.getElementById("pub-contenu");
+const pubImage = document.getElementById("pub-image");
+const pubBtnImage = document.getElementById("pub-btn-image");
+const pubApercu = document.getElementById("pub-apercu");
+const pubApercuImg = document.getElementById("pub-apercu-img");
+const pubAnnulerImage = document.getElementById("pub-annuler-image");
+const pubErreur = document.getElementById("pub-erreur");
+const pubPublier = document.getElementById("pub-publier");
+const pubFermer = document.getElementById("pub-fermer");
+const modalDetail = document.getElementById("modal-detail");
+const detailContenu = document.getElementById("detail-contenu");
+const detailCommentaires = document.getElementById("detail-commentaires");
+const inputCommentaire = document.getElementById("input-commentaire");
+const envoyerCommentaire = document.getElementById("envoyer-commentaire");
+const detailFermer = document.getElementById("detail-fermer");
+
+let publicationOuverte = null;
+let publicationsCache = [];
+let pubFichierSelectionne = null;
 const titreConversation = document.getElementById("titre-conversation");
 const appContainer = document.querySelector(".app-container");
 const retourBtn = document.getElementById("retour-btn");
@@ -44,9 +74,12 @@ let compteurClics = 0;
 let minuteurClics = null;
 
 // Stocke les messages déjà reçus pour chaque conversation, pour ne pas les recharger à chaque clic
-const cacheMessages = {
-  public: []
-};
+const cacheMessages = {};
+
+// Construit une clé de cache unique par conversation
+function cleCache(conv) {
+  return conv.type + ":" + conv.id;
+}
 
 async function verifierConnexion() {
   const reponse = await fetch("/moi");
@@ -105,6 +138,8 @@ validerCle.addEventListener("click", async () => {
     jeSuisAdmin = true;
     adminBtn.classList.remove("cache");
     modalCle.classList.add("cache");
+    construireListeSalons();   // retire les cadenas
+    mettreAJourZoneSaisie();    // débloque la saisie
     alert("Vous êtes maintenant administrateur.");
   } else {
     erreurCle.textContent = data.erreur || "Erreur.";
@@ -209,21 +244,92 @@ async function chargerListeUtilisateurs() {
   });
 }
 
+function construireListeSalons() {
+  listeSalonsDiv.innerHTML = "";
+
+  Object.keys(salonsDisponibles).forEach(id => {
+    const salon = salonsDisponibles[id];
+    const item = document.createElement("div");
+    item.classList.add("salon-item");
+    item.dataset.salonId = id;
+    item.textContent = salon.nom;
+
+    // Petit cadenas sur les salons en lecture seule pour les non-admins
+    if (salon.adminSeul && !jeSuisAdmin) {
+      const cadenas = document.createElement("span");
+      cadenas.classList.add("cadenas");
+      cadenas.textContent = "🔒";
+      cadenas.title = "Lecture seule";
+      item.appendChild(cadenas);
+    }
+
+    item.addEventListener("click", () => ouvrirSalon(id));
+    listeSalonsDiv.appendChild(item);
+  });
+
+  // Marque le salon actif
+  if (conversationActuelle.type === "salon") {
+    const actif = listeSalonsDiv.querySelector(`[data-salon-id="${conversationActuelle.id}"]`);
+    if (actif) actif.classList.add("actif");
+  }
+}
+
 function marquerActif(element) {
   document.querySelectorAll(".salon-item").forEach(el => el.classList.remove("actif"));
   element.classList.add("actif");
 }
 
-function ouvrirConversationPublique() {
-  conversationActuelle = "public";
-  titreConversation.textContent = "📻 Radio 1";
-  marquerActif(btnRadio1);
-  afficherMessages(cacheMessages.public);
+function ouvrirSalon(id) {
+  if (!salonsDisponibles[id]) return;
+
+  conversationActuelle = { type: "salon", id };
+  titreConversation.textContent = salonsDisponibles[id].nom;
+
+  const item = listeSalonsDiv.querySelector(`[data-salon-id="${id}"]`);
+  if (item) marquerActif(item);
+
   appContainer.classList.add("mobile-vue-chat");
+
+  const estForum = salonsDisponibles[id].type === "forum";
+
+  if (estForum) {
+    chatBox.classList.add("cache");
+    forumBox.classList.remove("cache");
+    listePublications.innerHTML = "<p class=\"info-vide\">Chargement...</p>";
+    socket.emit("demander_publications", { salon: id });
+  } else {
+    forumBox.classList.add("cache");
+    chatBox.classList.remove("cache");
+    mettreAJourZoneSaisie();
+
+    const cle = cleCache(conversationActuelle);
+    if (cacheMessages[cle]) {
+      afficherMessages(cacheMessages[cle]);
+    } else {
+      messagesDiv.innerHTML = "";
+      socket.emit("demander_historique_salon", { salon: id });
+    }
+  }
+}
+
+// Désactive la zone de saisie si le salon est en lecture seule
+function mettreAJourZoneSaisie() {
+  const estSalon = conversationActuelle.type === "salon";
+  const salon = estSalon ? salonsDisponibles[conversationActuelle.id] : null;
+  const lectureSeule = salon && salon.adminSeul && !jeSuisAdmin;
+
+  messageInput.disabled = lectureSeule;
+  btnEnvoyer.disabled = lectureSeule;
+  btnImage.disabled = lectureSeule;
+  btnEmoji.disabled = lectureSeule;
+
+  messageInput.placeholder = lectureSeule
+    ? "Salon en lecture seule"
+    : "Écris un message...";
 }
 
 function ouvrirConversationPrivee(pseudo) {
-  conversationActuelle = pseudo;
+  conversationActuelle = { type: "prive", id: pseudo };
   titreConversation.textContent = "👤 " + pseudo;
 
   const item = [...document.querySelectorAll("#liste-utilisateurs .salon-item")]
@@ -231,13 +337,210 @@ function ouvrirConversationPrivee(pseudo) {
   if (item) marquerActif(item);
 
   appContainer.classList.add("mobile-vue-chat");
+  forumBox.classList.add("cache");
+  chatBox.classList.remove("cache");
+  mettreAJourZoneSaisie();
 
-  if (cacheMessages[pseudo]) {
-    afficherMessages(cacheMessages[pseudo]);
+  const cle = cleCache(conversationActuelle);
+  if (cacheMessages[cle]) {
+    afficherMessages(cacheMessages[cle]);
   } else {
     messagesDiv.innerHTML = "";
     socket.emit("demander_historique_prive", { destinataire: pseudo });
   }
+}
+
+function reinitialiserImagePub() {
+  pubFichierSelectionne = null;
+  pubImage.value = "";
+  pubApercu.classList.add("cache");
+  pubApercuImg.src = "";
+}
+
+// ---------- FORUM ----------
+
+function afficherPublications(publications) {
+  publicationsCache = publications;
+  listePublications.innerHTML = "";
+
+  if (publications.length === 0) {
+    listePublications.innerHTML = "<p class=\"info-vide\">Aucune histoire pour le moment. Sois le premier !</p>";
+    return;
+  }
+
+  publications.forEach(pub => listePublications.appendChild(creerCartePublication(pub)));
+}
+
+function creerCartePublication(pub) {
+  const carte = document.createElement("div");
+  carte.classList.add("publication");
+  carte.dataset.pubId = pub.id;
+
+  // Colonne de vote
+  const votes = document.createElement("div");
+  votes.classList.add("votes");
+
+  const btnUp = document.createElement("button");
+  btnUp.textContent = "▲";
+  btnUp.classList.add("btn-vote");
+  if (pub.mon_vote === 1) btnUp.classList.add("actif-up");
+  btnUp.addEventListener("click", (e) => {
+    e.stopPropagation();
+    voter(pub.id, pub.mon_vote === 1 ? 0 : 1);
+  });
+
+  const scoreEl = document.createElement("div");
+  scoreEl.classList.add("score");
+  scoreEl.textContent = pub.score;
+
+  const btnDown = document.createElement("button");
+  btnDown.textContent = "▼";
+  btnDown.classList.add("btn-vote");
+  if (pub.mon_vote === -1) btnDown.classList.add("actif-down");
+  btnDown.addEventListener("click", (e) => {
+    e.stopPropagation();
+    voter(pub.id, pub.mon_vote === -1 ? 0 : -1);
+  });
+
+  votes.append(btnUp, scoreEl, btnDown);
+
+  // Contenu de la carte
+  const corps = document.createElement("div");
+  corps.classList.add("pub-corps");
+
+  const titre = document.createElement("div");
+  titre.classList.add("pub-titre");
+  titre.textContent = pub.titre;
+
+  const meta = document.createElement("div");
+  meta.classList.add("pub-meta");
+  meta.textContent = `par ${pub.auteur} · 💬 ${pub.nb_commentaires}`;
+
+  corps.append(titre, meta);
+
+  if (pub.image_url) {
+    const vignette = document.createElement("img");
+    vignette.src = pub.image_url;
+    vignette.classList.add("pub-vignette");
+    corps.appendChild(vignette);
+  }
+
+  carte.append(votes, corps);
+
+  // Bouton de suppression pour les admins
+  if (jeSuisAdmin) {
+    const btnSuppr = document.createElement("button");
+    btnSuppr.classList.add("btn-supprimer-pub");
+    btnSuppr.textContent = "🗑";
+    btnSuppr.addEventListener("click", (e) => {
+      e.stopPropagation();
+      supprimerPublication(pub.id);
+    });
+    carte.appendChild(btnSuppr);
+  }
+
+  corps.addEventListener("click", () => ouvrirDetail(pub.id));
+
+  return carte;
+}
+
+function voter(publicationId, valeur) {
+  const pub = publicationsCache.find(p => p.id === publicationId);
+  if (pub) pub.mon_vote = valeur;
+  socket.emit("voter", { publicationId, valeur });
+}
+
+async function supprimerPublication(id) {
+  if (!confirm("Supprimer cette publication et tous ses commentaires ?")) return;
+
+  const reponse = await fetch("/admin/supprimer-publication", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id })
+  });
+
+  const data = await reponse.json();
+  if (!data.succes) alert(data.erreur || "Erreur.");
+}
+
+function ouvrirDetail(publicationId) {
+  const pub = publicationsCache.find(p => p.id === publicationId);
+  if (!pub) return;
+
+  publicationOuverte = publicationId;
+  modalDetail.classList.remove("cache");
+
+  detailContenu.innerHTML = "";
+
+  const titre = document.createElement("h2");
+  titre.textContent = pub.titre;
+
+  const meta = document.createElement("div");
+  meta.classList.add("pub-meta");
+  meta.textContent = "par " + pub.auteur;
+
+  detailContenu.append(titre, meta);
+
+  if (pub.image_url) {
+    const img = document.createElement("img");
+    img.src = pub.image_url;
+    img.classList.add("detail-image");
+    img.addEventListener("click", () => window.open(pub.image_url, "_blank"));
+    detailContenu.appendChild(img);
+  }
+
+  if (pub.contenu) {
+    const contenu = document.createElement("p");
+    contenu.classList.add("detail-texte");
+    contenu.textContent = pub.contenu;
+    detailContenu.appendChild(contenu);
+  }
+
+  detailCommentaires.innerHTML = "<p class=\"info-vide\">Chargement des commentaires...</p>";
+  socket.emit("demander_commentaires", { publicationId });
+}
+
+function afficherCommentaires(commentaires) {
+  detailCommentaires.innerHTML = "";
+
+  if (commentaires.length === 0) {
+    detailCommentaires.innerHTML = "<p class=\"info-vide\">Aucun commentaire.</p>";
+    return;
+  }
+
+  commentaires.forEach(c => detailCommentaires.appendChild(creerCommentaire(c)));
+}
+
+function creerCommentaire(c) {
+  const el = document.createElement("div");
+  el.classList.add("commentaire");
+  el.dataset.commentaireId = c.id;
+
+  const auteur = document.createElement("span");
+  auteur.classList.add("auteur");
+  auteur.textContent = c.auteur;
+
+  const texte = document.createElement("div");
+  texte.textContent = c.texte;
+
+  el.append(auteur, texte);
+
+  if (jeSuisAdmin) {
+    const btnSuppr = document.createElement("button");
+    btnSuppr.classList.add("btn-supprimer");
+    btnSuppr.textContent = "🗑";
+    btnSuppr.addEventListener("click", async () => {
+      if (!confirm("Supprimer ce commentaire ?")) return;
+      await fetch("/admin/supprimer-commentaire", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: c.id })
+      });
+    });
+    el.appendChild(btnSuppr);
+  }
+
+  return el;
 }
 
 function afficherMessages(liste) {
@@ -285,7 +588,7 @@ function ajouterMessageAffiche(data) {
     btnSuppr.classList.add("btn-supprimer");
     btnSuppr.textContent = "🗑";
     btnSuppr.title = "Supprimer ce message";
-    const type = conversationActuelle === "public" ? "public" : "prive";
+    const type = conversationActuelle.type === "salon" ? "public" : "prive";
     btnSuppr.addEventListener("click", () => supprimerMessage(data.id, type));
     messageEl.appendChild(btnSuppr);
   }
@@ -440,7 +743,6 @@ async function envoyerImage(fichier) {
 function demarrerChat() {
   socket = io();
 
-  btnRadio1.addEventListener("click", ouvrirConversationPublique);
   retourBtn.addEventListener("click", () => {
     appContainer.classList.remove("mobile-vue-chat");
   });
@@ -472,37 +774,216 @@ function demarrerChat() {
       btnEnvoyer.textContent = "Envoyer";
     }
 
-    if (conversationActuelle === "public") {
-      socket.emit("message_public", { texte, imageUrl });
+    if (conversationActuelle.type === "salon") {
+      socket.emit("message_public", { texte, imageUrl, salon: conversationActuelle.id });
     } else {
-      socket.emit("message_prive", { destinataire: conversationActuelle, texte, imageUrl });
+      socket.emit("message_prive", { destinataire: conversationActuelle.id, texte, imageUrl });
     }
 
     messageInput.value = "";
     reinitialiserImage();
   });
 
-  // Historique du salon public à la connexion
-  socket.on("historique_public", (messages) => {
-    cacheMessages.public = messages;
-    if (conversationActuelle === "public") {
-      afficherMessages(messages);
+  // Liste des salons envoyée par le serveur à la connexion
+  socket.on("liste_salons", (salons) => {
+    salonsDisponibles = salons;
+    construireListeSalons();
+    ouvrirSalon("radio1");
+  });
+
+  // Historique d'un salon
+  socket.on("historique_salon", (data) => {
+    const cle = "salon:" + data.salon;
+    cacheMessages[cle] = data.messages;
+
+    if (conversationActuelle.type === "salon" && conversationActuelle.id === data.salon) {
+      afficherMessages(data.messages);
     }
   });
 
-  // Nouveau message dans le salon public
+  // Nouveau message dans un salon
   socket.on("message_public", (message) => {
-    cacheMessages.public.push(message);
-    if (conversationActuelle === "public") {
+    const salon = message.salon || "radio1";
+    const cle = "salon:" + salon;
+
+    if (!cacheMessages[cle]) cacheMessages[cle] = [];
+    cacheMessages[cle].push(message);
+
+    if (conversationActuelle.type === "salon" && conversationActuelle.id === salon) {
       ajouterMessageAffiche(message);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
   });
 
+  // Erreur d'envoi (ex : salon réservé aux admins)
+  socket.on("erreur_envoi", (data) => {
+    alert(data.message);
+    pubErreur.textContent = data.message;
+  });
+
+  // ----- Événements du forum -----
+
+  socket.on("liste_publications", (data) => {
+    if (conversationActuelle.type === "salon" && conversationActuelle.id === data.salon) {
+      afficherPublications(data.publications);
+    }
+  });
+
+  socket.on("nouvelle_publication", (data) => {
+    if (conversationActuelle.type === "salon" && conversationActuelle.id === data.salon) {
+      publicationsCache.unshift(data.publication);
+
+      const vide = listePublications.querySelector(".info-vide");
+      if (vide) listePublications.innerHTML = "";
+
+      listePublications.prepend(creerCartePublication(data.publication));
+    }
+  });
+
+  socket.on("score_maj", (data) => {
+    const pub = publicationsCache.find(p => p.id === data.publicationId);
+    if (pub) pub.score = data.score;
+
+    const carte = listePublications.querySelector(`[data-pub-id="${data.publicationId}"]`);
+    if (carte) {
+      const scoreEl = carte.querySelector(".score");
+      if (scoreEl) scoreEl.textContent = data.score;
+    }
+  });
+
+  socket.on("liste_commentaires", (data) => {
+    if (publicationOuverte === data.publicationId) {
+      afficherCommentaires(data.commentaires);
+    }
+  });
+
+  socket.on("nouveau_commentaire", (data) => {
+    // Met à jour le compteur sur la carte
+    const pub = publicationsCache.find(p => p.id === data.publicationId);
+    if (pub) {
+      pub.nb_commentaires = (pub.nb_commentaires || 0) + 1;
+      const carte = listePublications.querySelector(`[data-pub-id="${data.publicationId}"]`);
+      if (carte) {
+        const meta = carte.querySelector(".pub-meta");
+        if (meta) meta.textContent = `par ${pub.auteur} · 💬 ${pub.nb_commentaires}`;
+      }
+    }
+
+    // Ajoute le commentaire si la publication est ouverte
+    if (publicationOuverte === data.publicationId) {
+      const vide = detailCommentaires.querySelector(".info-vide");
+      if (vide) detailCommentaires.innerHTML = "";
+      detailCommentaires.appendChild(creerCommentaire(data.commentaire));
+    }
+  });
+
+  socket.on("publication_supprimee", (data) => {
+    publicationsCache = publicationsCache.filter(p => p.id !== data.id);
+    const carte = listePublications.querySelector(`[data-pub-id="${data.id}"]`);
+    if (carte) carte.remove();
+
+    if (publicationOuverte === data.id) {
+      modalDetail.classList.add("cache");
+      publicationOuverte = null;
+    }
+  });
+
+  socket.on("commentaire_supprime", (data) => {
+    const el = detailCommentaires.querySelector(`[data-commentaire-id="${data.id}"]`);
+    if (el) el.remove();
+  });
+
+  // ----- Interactions du forum -----
+
+  btnNouvellePub.addEventListener("click", () => {
+    pubTitre.value = "";
+    pubContenu.value = "";
+    pubErreur.textContent = "";
+    reinitialiserImagePub();
+    modalPublication.classList.remove("cache");
+    pubTitre.focus();
+  });
+
+  pubFermer.addEventListener("click", () => modalPublication.classList.add("cache"));
+  detailFermer.addEventListener("click", () => {
+    modalDetail.classList.add("cache");
+    publicationOuverte = null;
+  });
+
+  pubBtnImage.addEventListener("click", () => pubImage.click());
+  pubAnnulerImage.addEventListener("click", reinitialiserImagePub);
+
+  pubImage.addEventListener("change", () => {
+    const fichier = pubImage.files[0];
+    if (!fichier) return;
+
+    if (fichier.size > 5 * 1024 * 1024) {
+      alert("Image trop lourde (5 Mo maximum).");
+      reinitialiserImagePub();
+      return;
+    }
+
+    pubFichierSelectionne = fichier;
+    pubApercuImg.src = URL.createObjectURL(fichier);
+    pubApercu.classList.remove("cache");
+  });
+
+  pubPublier.addEventListener("click", async () => {
+    const titre = pubTitre.value.trim();
+    if (!titre) {
+      pubErreur.textContent = "Le titre est obligatoire.";
+      return;
+    }
+
+    let imageUrl = null;
+    pubPublier.disabled = true;
+    pubPublier.textContent = "Publication...";
+
+    if (pubFichierSelectionne) {
+      try {
+        imageUrl = await envoyerImage(pubFichierSelectionne);
+      } catch (err) {
+        pubErreur.textContent = err.message;
+        pubPublier.disabled = false;
+        pubPublier.textContent = "Publier";
+        return;
+      }
+    }
+
+    socket.emit("creer_publication", {
+      salon: conversationActuelle.id,
+      titre,
+      contenu: pubContenu.value.trim(),
+      imageUrl
+    });
+
+    pubPublier.disabled = false;
+    pubPublier.textContent = "Publier";
+    modalPublication.classList.add("cache");
+  });
+
+  envoyerCommentaire.addEventListener("click", () => {
+    const texte = inputCommentaire.value.trim();
+    if (!texte || !publicationOuverte) return;
+
+    socket.emit("ajouter_commentaire", {
+      publicationId: publicationOuverte,
+      texte
+    });
+
+    inputCommentaire.value = "";
+  });
+
+  inputCommentaire.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") envoyerCommentaire.click();
+  });
+
   // Historique reçu pour une conversation privée
   socket.on("historique_prive", (data) => {
-    cacheMessages[data.avec] = data.messages;
-    if (conversationActuelle === data.avec) {
+    const cle = "prive:" + data.avec;
+    cacheMessages[cle] = data.messages;
+
+    if (conversationActuelle.type === "prive" && conversationActuelle.id === data.avec) {
       afficherMessages(data.messages);
     }
   });
@@ -526,12 +1007,11 @@ function demarrerChat() {
 
   // Nouveau message privé reçu
   socket.on("message_prive", (data) => {
-    if (!cacheMessages[data.avec]) {
-      cacheMessages[data.avec] = [];
-    }
-    cacheMessages[data.avec].push(data.message);
+    const cle = "prive:" + data.avec;
+    if (!cacheMessages[cle]) cacheMessages[cle] = [];
+    cacheMessages[cle].push(data.message);
 
-    if (conversationActuelle === data.avec) {
+    if (conversationActuelle.type === "prive" && conversationActuelle.id === data.avec) {
       ajouterMessageAffiche(data.message);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }

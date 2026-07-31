@@ -36,6 +36,14 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// Salons publics disponibles
+// adminSeul: true => seuls les administrateurs peuvent y écrire
+const SALONS = {
+  radio1: { nom: "📻 Radio 1", adminSeul: false, type: "chat" },
+  radio2: { nom: "👻 Radio 2 (HR)", adminSeul: false, type: "forum" },
+  radio3: { nom: "📢 Radio 3 (Annonces)", adminSeul: true, type: "chat" }
+};
+
 // Donne toujours le même identifiant pour une conversation entre 2 pseudos
 function idConversation(pseudoA, pseudoB) {
   return [pseudoA, pseudoB].sort().join("|");
@@ -267,6 +275,38 @@ app.post("/admin/bannir", verifierAdmin, async (req, res) => {
   }
 });
 
+// Supprimer une publication du forum (et ses commentaires/votes en cascade)
+app.post("/admin/supprimer-publication", verifierAdmin, async (req, res) => {
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ erreur: "ID manquant." });
+
+  try {
+    await pool.query("DELETE FROM publications WHERE id = $1", [id]);
+    console.log(`${req.session.pseudo} a supprimé la publication #${id}`);
+    io.emit("publication_supprimee", { id });
+    res.json({ succes: true });
+  } catch (err) {
+    console.error("Erreur suppression publication :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
+});
+
+// Supprimer un commentaire
+app.post("/admin/supprimer-commentaire", verifierAdmin, async (req, res) => {
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ erreur: "ID manquant." });
+
+  try {
+    await pool.query("DELETE FROM commentaires WHERE id = $1", [id]);
+    console.log(`${req.session.pseudo} a supprimé le commentaire #${id}`);
+    io.emit("commentaire_supprime", { id });
+    res.json({ succes: true });
+  } catch (err) {
+    console.error("Erreur suppression commentaire :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
+});
+
 // Supprimer un message
 app.post("/admin/supprimer-message", verifierAdmin, async (req, res) => {
   const { id, type } = req.body;
@@ -404,28 +444,55 @@ io.on("connection", async (socket) => {
   socketsParPseudo[monPseudo] = socket.id;
   console.log(`${monPseudo} s'est connecté`);
 
-  // Envoie les 100 derniers messages publics
-  try {
-    const resultat = await pool.query(
-      "SELECT id, auteur, texte, image_url, date FROM messages_publics ORDER BY id DESC LIMIT 100"
-    );
-    socket.emit("historique_public", resultat.rows.reverse());
-  } catch (err) {
-    console.error("Erreur historique public :", err);
-  }
+  // Envoie la liste des salons disponibles au client
+  socket.emit("liste_salons", SALONS);
+
+  // Historique d'un salon donné, à la demande
+  socket.on("demander_historique_salon", async (data) => {
+    const salon = data.salon;
+    if (!SALONS[salon]) return;
+
+    try {
+      const resultat = await pool.query(
+        "SELECT id, auteur, texte, image_url, date FROM messages_publics WHERE salon = $1 ORDER BY id DESC LIMIT 100",
+        [salon]
+      );
+      socket.emit("historique_salon", {
+        salon,
+        messages: resultat.rows.reverse()
+      });
+    } catch (err) {
+      console.error("Erreur historique salon :", err);
+    }
+  });
 
   // --- Salon public "Radio 1" ---
   socket.on("message_public", async (data) => {
     const texte = (data.texte || "").trim();
     const imageUrl = data.imageUrl || null;
+    const salon = data.salon || "radio1";
+
+    // Salon inexistant
+    if (!SALONS[salon]) return;
 
     // Il faut au moins un texte OU une image
     if (!texte && !imageUrl) return;
 
+    // Vérifie les droits d'écriture pour les salons réservés aux admins
+    if (SALONS[salon].adminSeul) {
+      const autorise = await estAdmin(monPseudo);
+      if (!autorise) {
+        socket.emit("erreur_envoi", {
+          message: "Seuls les administrateurs peuvent écrire dans ce salon."
+        });
+        return;
+      }
+    }
+
     try {
       const resultat = await pool.query(
-        "INSERT INTO messages_publics (auteur, texte, image_url) VALUES ($1, $2, $3) RETURNING id, auteur, texte, image_url, date",
-        [monPseudo, texte || null, imageUrl]
+        "INSERT INTO messages_publics (auteur, texte, image_url, salon) VALUES ($1, $2, $3, $4) RETURNING id, auteur, texte, image_url, date, salon",
+        [monPseudo, texte || null, imageUrl, salon]
       );
       io.emit("message_public", resultat.rows[0]);
     } catch (err) {
@@ -483,6 +550,145 @@ io.on("connection", async (socket) => {
       });
     } catch (err) {
       console.error("Erreur message privé :", err);
+    }
+  });
+
+  // ---------- FORUM (Radio 2) ----------
+
+  // Charge la liste des publications avec leur score et nombre de commentaires
+  socket.on("demander_publications", async (data) => {
+    const salon = data.salon || "radio2";
+
+    try {
+      const resultat = await pool.query(`
+        SELECT
+          p.id, p.auteur, p.titre, p.contenu, p.image_url, p.date,
+          COALESCE(SUM(v.valeur), 0)::int AS score,
+          COALESCE(MAX(CASE WHEN v.pseudo = $2 THEN v.valeur END), 0)::int AS mon_vote,
+          (SELECT COUNT(*) FROM commentaires c WHERE c.publication_id = p.id)::int AS nb_commentaires
+        FROM publications p
+        LEFT JOIN votes v ON v.publication_id = p.id
+        WHERE p.salon = $1
+        GROUP BY p.id
+        ORDER BY p.id DESC
+        LIMIT 50
+      `, [salon, monPseudo]);
+
+      socket.emit("liste_publications", { salon, publications: resultat.rows });
+    } catch (err) {
+      console.error("Erreur liste publications :", err);
+    }
+  });
+
+  // Créer une nouvelle publication
+  socket.on("creer_publication", async (data) => {
+    const titre = (data.titre || "").trim();
+    const contenu = (data.contenu || "").trim();
+    const imageUrl = data.imageUrl || null;
+    const salon = data.salon || "radio2";
+
+    if (!titre) {
+      socket.emit("erreur_envoi", { message: "Le titre est obligatoire." });
+      return;
+    }
+
+    if (titre.length > 200) {
+      socket.emit("erreur_envoi", { message: "Titre trop long (200 caractères maximum)." });
+      return;
+    }
+
+    try {
+      const resultat = await pool.query(
+        `INSERT INTO publications (salon, auteur, titre, contenu, image_url)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, auteur, titre, contenu, image_url, date`,
+        [salon, monPseudo, titre, contenu || null, imageUrl]
+      );
+
+      const publication = resultat.rows[0];
+      publication.score = 0;
+      publication.mon_vote = 0;
+      publication.nb_commentaires = 0;
+
+      io.emit("nouvelle_publication", { salon, publication });
+    } catch (err) {
+      console.error("Erreur création publication :", err);
+    }
+  });
+
+  // Voter (1 = up, -1 = down, 0 = annuler)
+  socket.on("voter", async (data) => {
+    const publicationId = parseInt(data.publicationId, 10);
+    const valeur = parseInt(data.valeur, 10);
+
+    if (![1, -1, 0].includes(valeur) || !publicationId) return;
+
+    try {
+      if (valeur === 0) {
+        await pool.query(
+          "DELETE FROM votes WHERE publication_id = $1 AND pseudo = $2",
+          [publicationId, monPseudo]
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO votes (publication_id, pseudo, valeur)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (publication_id, pseudo)
+           DO UPDATE SET valeur = EXCLUDED.valeur`,
+          [publicationId, monPseudo, valeur]
+        );
+      }
+
+      const scoreResultat = await pool.query(
+        "SELECT COALESCE(SUM(valeur), 0)::int AS score FROM votes WHERE publication_id = $1",
+        [publicationId]
+      );
+
+      io.emit("score_maj", {
+        publicationId,
+        score: scoreResultat.rows[0].score
+      });
+    } catch (err) {
+      console.error("Erreur vote :", err);
+    }
+  });
+
+  // Charger les commentaires d'une publication
+  socket.on("demander_commentaires", async (data) => {
+    const publicationId = parseInt(data.publicationId, 10);
+    if (!publicationId) return;
+
+    try {
+      const resultat = await pool.query(
+        "SELECT id, auteur, texte, date FROM commentaires WHERE publication_id = $1 ORDER BY id ASC",
+        [publicationId]
+      );
+      socket.emit("liste_commentaires", { publicationId, commentaires: resultat.rows });
+    } catch (err) {
+      console.error("Erreur commentaires :", err);
+    }
+  });
+
+  // Ajouter un commentaire
+  socket.on("ajouter_commentaire", async (data) => {
+    const publicationId = parseInt(data.publicationId, 10);
+    const texte = (data.texte || "").trim();
+
+    if (!publicationId || !texte) return;
+
+    try {
+      const resultat = await pool.query(
+        `INSERT INTO commentaires (publication_id, auteur, texte)
+         VALUES ($1, $2, $3) RETURNING id, auteur, texte, date`,
+        [publicationId, monPseudo, texte]
+      );
+
+      io.emit("nouveau_commentaire", {
+        publicationId,
+        commentaire: resultat.rows[0]
+      });
+    } catch (err) {
+      console.error("Erreur ajout commentaire :", err);
     }
   });
 

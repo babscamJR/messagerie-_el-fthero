@@ -3,27 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="description" content="Messagerie instantanée gratuite. Discutez en temps réel avec vos amis, envoyez des images et des messages privés.">
-  <meta name="robots" content="index, follow">
-  <title>Elfthero Message - Messagerie instantanée gratuite</title>
-  <meta name="google-site-verification" content="R8FFLIice75YonHm9-r_sS2QRIhEp5r6fyq_votxeio" />
+  <title>Ma Messagerie</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
   <div class="app-container">
 
+    <!-- Barre latérale -->
     <div class="sidebar">
       <div class="sidebar-header">
-        <h1 id="titre-app" title="Messagerie">💬 Messagerie</h1>
+        <h1 id="titre-app" title="Messagerie">
+          <svg class="logo-mini" viewBox="0 0 200 200" aria-hidden="true">
+            <ellipse cx="100" cy="90" rx="62" ry="28" fill="none" stroke="#27ae60" stroke-width="11" transform="rotate(-30 100 90)"/>
+            <path d="M100 46 Q107 84 135 90 Q107 96 100 134 Q93 96 65 90 Q93 84 100 46 Z" fill="#2ecc71"/>
+          </svg>
+          <span>Messagerie</span>
+        </h1>
         <button id="admin-btn" class="cache">🛡️ Modération</button>
         <button id="deconnexion-btn" title="Se déconnecter">Déconnexion</button>
       </div>
 
       <div class="sidebar-section">
-        <div class="salon-item actif" data-type="public" id="btn-radio1">
-          📻 Radio 1
-        </div>
+        <div class="sidebar-titre">Salons</div>
+        <div id="liste-salons"></div>
       </div>
 
       <div class="sidebar-section">
@@ -32,10 +36,17 @@
       </div>
     </div>
 
+    <!-- Zone de chat -->
     <div class="chat-container">
       <div class="chat-header">
         <span id="titre-conversation">📻 Radio 1</span>
         <button id="retour-btn" class="mobile-only">← Retour</button>
+      </div>
+
+      <!-- Vue forum (Radio 2) -->
+      <div id="forum-box" class="cache">
+        <button id="btn-nouvelle-pub">✍️ Écrire une histoire</button>
+        <div id="liste-publications"></div>
       </div>
 
       <div id="chat-box">
@@ -63,6 +74,42 @@
 
   </div>
 
+  <!-- Fenêtre : saisie de la clé admin -->
+  <!-- Fenêtre : créer une publication -->
+  <div id="modal-publication" class="modal cache">
+    <div class="modal-contenu large">
+      <h2>✍️ Nouvelle histoire</h2>
+      <input type="text" id="pub-titre" placeholder="Titre de ton histoire" maxlength="200">
+      <textarea id="pub-contenu" placeholder="Raconte ton histoire..." rows="7"></textarea>
+      <input type="file" id="pub-image" accept="image/*" hidden>
+      <button type="button" id="pub-btn-image" class="secondaire">📎 Ajouter une image</button>
+      <div id="pub-apercu" class="cache">
+        <img id="pub-apercu-img" alt="Aperçu">
+        <button type="button" id="pub-annuler-image">✕</button>
+      </div>
+      <p id="pub-erreur" class="erreur-modal"></p>
+      <div class="modal-actions">
+        <button id="pub-publier">Publier</button>
+        <button id="pub-fermer" class="secondaire">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fenêtre : détail d'une publication avec ses commentaires -->
+  <div id="modal-detail" class="modal cache">
+    <div class="modal-contenu large">
+      <div id="detail-contenu"></div>
+      <div id="detail-commentaires"></div>
+      <div id="detail-form-commentaire">
+        <input type="text" id="input-commentaire" placeholder="Ajouter un commentaire..." autocomplete="off">
+        <button id="envoyer-commentaire">Envoyer</button>
+      </div>
+      <div class="modal-actions">
+        <button id="detail-fermer" class="secondaire">Fermer</button>
+      </div>
+    </div>
+  </div>
+
   <div id="modal-cle" class="modal cache">
     <div class="modal-contenu">
       <h2>Accès modération</h2>
@@ -75,6 +122,7 @@
     </div>
   </div>
 
+  <!-- Fenêtre : panneau de modération -->
   <div id="modal-admin" class="modal cache">
     <div class="modal-contenu large">
       <h2>🛡️ Panneau de modération</h2>

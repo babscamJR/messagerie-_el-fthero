@@ -43,6 +43,47 @@ async function initialiserBase() {
     );
   `);
 
+  // Colonne "salon" pour distinguer les différentes radios
+  await pool.query(`ALTER TABLE messages_publics ADD COLUMN IF NOT EXISTS salon VARCHAR(30) DEFAULT 'radio1';`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_salon ON messages_publics (salon);`);
+
+  // ----- Format forum pour Radio 2 (HR) -----
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS publications (
+      id SERIAL PRIMARY KEY,
+      salon VARCHAR(30) NOT NULL DEFAULT 'radio2',
+      auteur VARCHAR(50) NOT NULL,
+      titre VARCHAR(200) NOT NULL,
+      contenu TEXT,
+      image_url TEXT,
+      date TIMESTAMP DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS votes (
+      id SERIAL PRIMARY KEY,
+      publication_id INTEGER NOT NULL REFERENCES publications(id) ON DELETE CASCADE,
+      pseudo VARCHAR(50) NOT NULL,
+      valeur SMALLINT NOT NULL,
+      UNIQUE (publication_id, pseudo)
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS commentaires (
+      id SERIAL PRIMARY KEY,
+      publication_id INTEGER NOT NULL REFERENCES publications(id) ON DELETE CASCADE,
+      auteur VARCHAR(50) NOT NULL,
+      texte TEXT NOT NULL,
+      date TIMESTAMP DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_pub_salon ON publications (salon);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_com_pub ON commentaires (publication_id);`);
+
   // Colonnes de modération sur les comptes
   await pool.query(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;`);
   await pool.query(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS is_banni BOOLEAN DEFAULT FALSE;`);

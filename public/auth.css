@@ -115,3 +115,12 @@ button:hover {
 .lien a:hover {
   text-decoration: underline;
 }
+
+/* ---------- Logo ---------- */
+
+.logo-auth {
+  width: 76px;
+  height: 76px;
+  display: block;
+  margin: 0 auto 4px;
+}
