@@ -991,3 +991,77 @@ button.danger {
   height: 26px;
   flex-shrink: 0;
 }
+
+/* ---------- Fond animé : grille de cubes 3D (Radio 1) ---------- */
+
+.chat-container {
+  position: relative;
+}
+
+#fond-cubes {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  perspective: 800px;
+  display: grid;
+  place-items: center;
+  opacity: 0.22;
+}
+
+#fond-cubes.cache {
+  display: none !important;
+}
+
+.cubes-scene {
+  display: grid;
+  gap: 6%;
+  width: 115%;
+  aspect-ratio: 1;
+  transform: rotateX(48deg) rotateZ(45deg);
+  transform-style: preserve-3d;
+}
+
+.cube {
+  position: relative;
+  transform-style: preserve-3d;
+  animation: cube-vague 7s ease-in-out infinite;
+}
+
+.cube-face {
+  position: absolute;
+  inset: 0;
+  border: 1px dashed var(--accent);
+  background: rgba(46, 204, 113, 0.04);
+}
+
+.cube-face--top    { transform: translateZ(calc(var(--taille) / 2)); }
+.cube-face--bottom { transform: translateZ(calc(var(--taille) / -2)); }
+.cube-face--front  { transform: rotateX(90deg) translateZ(calc(var(--taille) / 2)); }
+.cube-face--back   { transform: rotateX(-90deg) translateZ(calc(var(--taille) / 2)); }
+.cube-face--left   { transform: rotateY(-90deg) translateZ(calc(var(--taille) / 2)); }
+.cube-face--right  { transform: rotateY(90deg) translateZ(calc(var(--taille) / 2)); }
+
+@keyframes cube-vague {
+  0%, 100% { transform: translateZ(0) rotateZ(0deg); }
+  50%      { transform: translateZ(14px) rotateZ(16deg); }
+}
+
+/* Les éléments du chat passent au-dessus du fond */
+.chat-header,
+#chat-box,
+#forum-box {
+  position: relative;
+  z-index: 1;
+}
+
+/* Respecte les préférences d'accessibilité */
+@media (prefers-reduced-motion: reduce) {
+  .cube { animation: none; }
+}
+
+/* Fond allégé sur mobile (moins de cubes, moins de calcul) */
+@media (max-width: 700px) {
+  #fond-cubes { opacity: 0.16; }
+}

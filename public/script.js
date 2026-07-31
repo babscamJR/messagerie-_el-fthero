@@ -289,6 +289,7 @@ function ouvrirSalon(id) {
   if (item) marquerActif(item);
 
   appContainer.classList.add("mobile-vue-chat");
+  majFondCubes();
 
   const estForum = salonsDisponibles[id].type === "forum";
 
@@ -337,6 +338,7 @@ function ouvrirConversationPrivee(pseudo) {
   if (item) marquerActif(item);
 
   appContainer.classList.add("mobile-vue-chat");
+  majFondCubes();
   forumBox.classList.add("cache");
   chatBox.classList.remove("cache");
   mettreAJourZoneSaisie();
@@ -355,6 +357,61 @@ function reinitialiserImagePub() {
   pubImage.value = "";
   pubApercu.classList.add("cache");
   pubApercuImg.src = "";
+}
+
+// ---------- Fond animé (grille de cubes) ----------
+
+const fondCubes = document.getElementById("fond-cubes");
+
+function construireFondCubes() {
+  if (!fondCubes || fondCubes.dataset.pret) return;
+
+  // Moins de cubes sur mobile pour préserver les performances
+  const taille = window.innerWidth < 700 ? 5 : 7;
+
+  const scene = document.createElement("div");
+  scene.classList.add("cubes-scene");
+  scene.style.gridTemplateColumns = `repeat(${taille}, 1fr)`;
+  scene.style.gridTemplateRows = `repeat(${taille}, 1fr)`;
+
+  const faces = ["top", "bottom", "left", "right", "front", "back"];
+
+  for (let ligne = 0; ligne < taille; ligne++) {
+    for (let colonne = 0; colonne < taille; colonne++) {
+      const cube = document.createElement("div");
+      cube.classList.add("cube");
+      cube.style.setProperty("--taille", "100%");
+
+      // Le délai crée une vague qui traverse la grille en diagonale
+      const distance = ligne + colonne;
+      cube.style.animationDelay = (distance * 0.18) + "s";
+
+      faces.forEach(nom => {
+        const face = document.createElement("div");
+        face.classList.add("cube-face", "cube-face--" + nom);
+        cube.appendChild(face);
+      });
+
+      scene.appendChild(cube);
+    }
+  }
+
+  fondCubes.appendChild(scene);
+  fondCubes.dataset.pret = "1";
+}
+
+// Affiche le fond uniquement dans Radio 1
+function majFondCubes() {
+  if (!fondCubes) return;
+
+  const actif = conversationActuelle.type === "salon" && conversationActuelle.id === "radio1";
+
+  if (actif) {
+    construireFondCubes();
+    fondCubes.classList.remove("cache");
+  } else {
+    fondCubes.classList.add("cache");
+  }
 }
 
 // ---------- FORUM ----------
