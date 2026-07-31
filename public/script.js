@@ -39,6 +39,29 @@ const inputCommentaire = document.getElementById("input-commentaire");
 const envoyerCommentaire = document.getElementById("envoyer-commentaire");
 const detailFermer = document.getElementById("detail-fermer");
 
+// Groupes
+const listeGroupes = document.getElementById("liste-groupes");
+const listeInvitations = document.getElementById("liste-invitations");
+const btnCreerGroupe = document.getElementById("btn-creer-groupe");
+const btnInviter = document.getElementById("btn-inviter");
+const btnQuitterGroupe = document.getElementById("btn-quitter-groupe");
+const modalGroupe = document.getElementById("modal-groupe");
+const groupeTitre = document.getElementById("groupe-titre");
+const groupeErreur = document.getElementById("groupe-erreur");
+const groupeCreer = document.getElementById("groupe-creer");
+const groupeFermer = document.getElementById("groupe-fermer");
+const modalInviter = document.getElementById("modal-inviter");
+const inviterPseudo = document.getElementById("inviter-pseudo");
+const inviterErreur = document.getElementById("inviter-erreur");
+const inviterEnvoyer = document.getElementById("inviter-envoyer");
+const inviterFermer = document.getElementById("inviter-fermer");
+const modalGroupesAttente = document.getElementById("modal-groupes-attente");
+const listeGroupesAttente = document.getElementById("liste-groupes-attente");
+const btnGroupesAttente = document.getElementById("btn-groupes-attente");
+const fermerGroupesAttente = document.getElementById("fermer-groupes-attente");
+
+let mesGroupes = [];
+
 let publicationOuverte = null;
 let publicationsCache = [];
 let pubFichierSelectionne = null;
@@ -335,6 +358,7 @@ function ouvrirSalon(id) {
 
   appContainer.classList.add("mobile-vue-chat");
   majFondCubes();
+  masquerActionsGroupe();
 
   const estForum = salonsDisponibles[id].type === "forum";
 
@@ -384,6 +408,7 @@ function ouvrirConversationPrivee(pseudo) {
 
   appContainer.classList.add("mobile-vue-chat");
   majFondCubes();
+  masquerActionsGroupe();
   forumBox.classList.add("cache");
   chatBox.classList.remove("cache");
   mettreAJourZoneSaisie();
@@ -402,6 +427,190 @@ function reinitialiserImagePub() {
   pubImage.value = "";
   pubApercu.classList.add("cache");
   pubApercuImg.src = "";
+}
+
+// ---------- GROUPES ----------
+
+function afficherMesGroupes(donnees) {
+  mesGroupes = donnees.groupes;
+
+  // Invitations en attente
+  listeInvitations.innerHTML = "";
+  donnees.invitations.forEach(inv => {
+    const bloc = document.createElement("div");
+    bloc.classList.add("invitation");
+
+    const texte = document.createElement("div");
+    texte.classList.add("invitation-texte");
+    texte.textContent = `${inv.invite_par} t'invite dans "${inv.titre}"`;
+
+    const actions = document.createElement("div");
+    actions.classList.add("invitation-actions");
+
+    const oui = document.createElement("button");
+    oui.textContent = "Accepter";
+    oui.addEventListener("click", () => {
+      socket.emit("repondre_invitation", { groupeId: inv.groupe_id, accepter: true });
+    });
+
+    const non = document.createElement("button");
+    non.textContent = "Refuser";
+    non.classList.add("secondaire");
+    non.addEventListener("click", () => {
+      socket.emit("repondre_invitation", { groupeId: inv.groupe_id, accepter: false });
+    });
+
+    actions.append(oui, non);
+    bloc.append(texte, actions);
+    listeInvitations.appendChild(bloc);
+  });
+
+  // Liste des groupes
+  listeGroupes.innerHTML = "";
+
+  if (donnees.groupes.length === 0) {
+    const vide = document.createElement("div");
+    vide.classList.add("groupe-vide");
+    vide.textContent = "Aucun groupe";
+    listeGroupes.appendChild(vide);
+    return;
+  }
+
+  donnees.groupes.forEach(g => {
+    const item = document.createElement("div");
+    item.classList.add("salon-item");
+    item.dataset.groupeId = g.id;
+
+    const nom = document.createElement("span");
+    nom.textContent = "👥 " + g.titre;
+    item.appendChild(nom);
+
+    if (g.statut === "en_attente") {
+      item.classList.add("en-attente");
+      const badge = document.createElement("span");
+      badge.classList.add("badge-attente");
+      badge.textContent = "en attente";
+      item.appendChild(badge);
+    }
+
+    item.addEventListener("click", () => ouvrirGroupe(g.id));
+    listeGroupes.appendChild(item);
+  });
+
+  // Rétablit le marquage si un groupe est ouvert
+  if (conversationActuelle.type === "groupe") {
+    const actif = listeGroupes.querySelector(`[data-groupe-id="${conversationActuelle.id}"]`);
+    if (actif) actif.classList.add("actif");
+  }
+}
+
+function ouvrirGroupe(id) {
+  const groupe = mesGroupes.find(g => g.id === id);
+  if (!groupe) return;
+
+  conversationActuelle = { type: "groupe", id };
+  titreConversation.textContent = "👥 " + groupe.titre;
+
+  const item = listeGroupes.querySelector(`[data-groupe-id="${id}"]`);
+  if (item) marquerActif(item);
+
+  appContainer.classList.add("mobile-vue-chat");
+  majFondCubes();
+  forumBox.classList.add("cache");
+  chatBox.classList.remove("cache");
+
+  const enAttente = groupe.statut === "en_attente";
+
+  btnInviter.classList.toggle("cache", enAttente);
+  btnQuitterGroupe.classList.remove("cache");
+
+  messageInput.disabled = enAttente;
+  btnEnvoyer.disabled = enAttente;
+  btnImage.disabled = enAttente;
+  btnEmoji.disabled = enAttente;
+  messageInput.placeholder = enAttente
+    ? "En attente de validation par un modérateur"
+    : "Écris un message...";
+
+  if (enAttente) {
+    messagesDiv.innerHTML = "<p class=\"info-vide\">Ce groupe attend la validation d'un modérateur. Il sera supprimé automatiquement après 7 jours sans réponse.</p>";
+    return;
+  }
+
+  const cle = "groupe:" + id;
+  if (cacheMessages[cle]) {
+    afficherMessages(cacheMessages[cle]);
+  } else {
+    messagesDiv.innerHTML = "";
+    socket.emit("demander_historique_groupe", { groupeId: id });
+  }
+}
+
+// Cache les boutons de groupe quand on quitte un groupe
+function masquerActionsGroupe() {
+  btnInviter.classList.add("cache");
+  btnQuitterGroupe.classList.add("cache");
+}
+
+async function chargerGroupesEnAttente() {
+  listeGroupesAttente.innerHTML = "<p class=\"info-vide\">Chargement...</p>";
+
+  try {
+    const reponse = await fetch("/admin/groupes-en-attente");
+    const data = await reponse.json();
+
+    listeGroupesAttente.innerHTML = "";
+
+    if (!data.groupes || data.groupes.length === 0) {
+      listeGroupesAttente.innerHTML = "<p class=\"info-vide\">Aucun groupe en attente.</p>";
+      return;
+    }
+
+    data.groupes.forEach(g => {
+      const ligne = document.createElement("div");
+      ligne.classList.add("ligne-admin");
+
+      const infos = document.createElement("div");
+      const restant = 7 - g.jours_ecoules;
+      infos.innerHTML = `<strong>${g.titre}</strong><br>` +
+        `<span class="pub-meta">par ${g.createur} · expire dans ${restant} jour(s)</span>`;
+
+      const actions = document.createElement("div");
+      actions.classList.add("actions-admin");
+
+      const valider = document.createElement("button");
+      valider.textContent = "Valider";
+      valider.addEventListener("click", () => repondreGroupe(g.id, true, g.titre));
+
+      const refuser = document.createElement("button");
+      refuser.textContent = "Refuser";
+      refuser.classList.add("danger");
+      refuser.addEventListener("click", () => repondreGroupe(g.id, false, g.titre));
+
+      actions.append(valider, refuser);
+      ligne.append(infos, actions);
+      listeGroupesAttente.appendChild(ligne);
+    });
+  } catch (err) {
+    listeGroupesAttente.innerHTML = "<p class=\"info-vide\">Erreur de chargement.</p>";
+  }
+}
+
+async function repondreGroupe(id, accepter, titre) {
+  if (!accepter && !confirm(`Refuser et supprimer le groupe "${titre}" ?`)) return;
+
+  const reponse = await fetch("/admin/valider-groupe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, accepter })
+  });
+
+  const data = await reponse.json();
+  if (data.succes) {
+    chargerGroupesEnAttente();
+  } else {
+    alert(data.erreur || "Erreur.");
+  }
 }
 
 // ---------- Fond animé (grille de cubes) ----------
@@ -878,6 +1087,8 @@ function demarrerChat() {
 
     if (conversationActuelle.type === "salon") {
       socket.emit("message_public", { texte, imageUrl, salon: conversationActuelle.id });
+    } else if (conversationActuelle.type === "groupe") {
+      socket.emit("message_groupe", { groupeId: conversationActuelle.id, texte, imageUrl });
     } else {
       socket.emit("message_prive", { destinataire: conversationActuelle.id, texte, imageUrl });
     }
@@ -922,6 +1133,123 @@ function demarrerChat() {
     alert(data.message);
     pubErreur.textContent = data.message;
   });
+
+  // ----- Événements des groupes -----
+
+  socket.on("mes_groupes", afficherMesGroupes);
+
+  socket.on("historique_groupe", (data) => {
+    cacheMessages["groupe:" + data.groupeId] = data.messages;
+    if (conversationActuelle.type === "groupe" && conversationActuelle.id === data.groupeId) {
+      afficherMessages(data.messages);
+    }
+  });
+
+  socket.on("message_groupe", (data) => {
+    const cle = "groupe:" + data.groupeId;
+    if (!cacheMessages[cle]) cacheMessages[cle] = [];
+    cacheMessages[cle].push(data.message);
+
+    if (conversationActuelle.type === "groupe" && conversationActuelle.id === data.groupeId) {
+      ajouterMessageAffiche(data.message);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+  });
+
+  socket.on("groupe_cree", () => {
+    modalGroupe.classList.add("cache");
+    alert("Groupe créé. Un modérateur doit valider sa création avant qu'il soit utilisable.");
+  });
+
+  socket.on("nouvelle_invitation", () => {
+    socket.emit("demander_mes_groupes");
+  });
+
+  socket.on("groupe_valide", () => {
+    socket.emit("demander_mes_groupes");
+  });
+
+  socket.on("groupe_supprime", (data) => {
+    socket.emit("demander_mes_groupes");
+    if (conversationActuelle.type === "groupe" && conversationActuelle.id === data.id) {
+      ouvrirSalon("radio1");
+    }
+  });
+
+  socket.on("demande_groupe_en_attente", () => {
+    if (jeSuisAdmin && !modalGroupesAttente.classList.contains("cache")) {
+      chargerGroupesEnAttente();
+    }
+  });
+
+  // ----- Interactions des groupes -----
+
+  btnCreerGroupe.addEventListener("click", () => {
+    groupeTitre.value = "";
+    groupeErreur.textContent = "";
+    modalGroupe.classList.remove("cache");
+    groupeTitre.focus();
+  });
+
+  groupeFermer.addEventListener("click", () => modalGroupe.classList.add("cache"));
+
+  groupeCreer.addEventListener("click", () => {
+    const titre = groupeTitre.value.trim();
+    if (!titre) {
+      groupeErreur.textContent = "Le nom du groupe est obligatoire.";
+      return;
+    }
+    socket.emit("creer_groupe", { titre });
+  });
+
+  groupeTitre.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") groupeCreer.click();
+  });
+
+  btnInviter.addEventListener("click", () => {
+    inviterPseudo.value = "";
+    inviterErreur.textContent = "";
+    modalInviter.classList.remove("cache");
+    inviterPseudo.focus();
+  });
+
+  inviterFermer.addEventListener("click", () => modalInviter.classList.add("cache"));
+
+  inviterEnvoyer.addEventListener("click", () => {
+    const pseudo = inviterPseudo.value.trim();
+    if (!pseudo || conversationActuelle.type !== "groupe") return;
+
+    socket.emit("inviter_groupe", {
+      groupeId: conversationActuelle.id,
+      pseudo
+    });
+
+    inviterPseudo.value = "";
+  });
+
+  inviterPseudo.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") inviterEnvoyer.click();
+  });
+
+  btnQuitterGroupe.addEventListener("click", () => {
+    if (conversationActuelle.type !== "groupe") return;
+    if (!confirm("Quitter ce groupe ?")) return;
+
+    socket.emit("quitter_groupe", { groupeId: conversationActuelle.id });
+    ouvrirSalon("radio1");
+  });
+
+  btnGroupesAttente.addEventListener("click", () => {
+    modalGroupesAttente.classList.remove("cache");
+    chargerGroupesEnAttente();
+  });
+
+  fermerGroupesAttente.addEventListener("click", () => {
+    modalGroupesAttente.classList.add("cache");
+  });
+
+  // Charge les groupes au démarrage
+  socket.emit("demander_mes_groupes");
 
   // ----- Événements du forum -----
 

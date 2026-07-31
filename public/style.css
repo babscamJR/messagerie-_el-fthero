@@ -1169,6 +1169,150 @@ button.danger-fort:hover {
     flex: 1;
   }
 }
+
+
+/* ---------- Groupes ---------- */
+
+.sidebar-titre {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#btn-creer-groupe {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--accent);
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#btn-creer-groupe:hover {
+  border-color: var(--accent);
+  background: var(--bg-message-mine);
+}
+
+.salon-item.en-attente {
+  opacity: 0.6;
+}
+
+.badge-attente {
+  font-size: 9px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1px 6px;
+  margin-left: 6px;
+  text-transform: uppercase;
+}
+
+.groupe-vide {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  font-style: italic;
+}
+
+.invitation {
+  background: var(--bg-message-mine);
+  border: 1px solid var(--accent-hover);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+
+.invitation-texte {
+  font-size: 12px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.invitation-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.invitation-actions button {
+  flex: 1;
+  padding: 5px;
+  font-size: 11px;
+  border: none;
+  border-radius: 5px;
+  background: var(--accent);
+  color: var(--bg-page);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#btn-inviter,
+#btn-quitter-groupe {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+#btn-inviter:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+#btn-quitter-groupe:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.note-modal {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-top: 12px;
+}
+
+.bouton-pleine-largeur {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 14px;
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.bouton-pleine-largeur:hover {
+  background: var(--accent);
+  color: var(--bg-page);
+}
+
+@media (max-width: 700px) {
+  #btn-inviter,
+  #btn-quitter-groupe {
+    font-size: 10px;
+    padding: 4px 7px;
+  }
+}
+
 /* ==========================================================
    CORRECTIF AFFICHAGE — à garder en dernier dans le fichier
    ========================================================== */

@@ -84,6 +84,56 @@ async function initialiserBase() {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_pub_salon ON publications (salon);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_com_pub ON commentaires (publication_id);`);
 
+  // ----- Groupes -----
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS groupes (
+      id SERIAL PRIMARY KEY,
+      titre VARCHAR(100) NOT NULL,
+      createur VARCHAR(50) NOT NULL,
+      statut VARCHAR(20) NOT NULL DEFAULT 'en_attente',
+      cree_le TIMESTAMP DEFAULT NOW(),
+      valide_par VARCHAR(50),
+      valide_le TIMESTAMP
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS membres_groupe (
+      id SERIAL PRIMARY KEY,
+      groupe_id INTEGER NOT NULL REFERENCES groupes(id) ON DELETE CASCADE,
+      pseudo VARCHAR(50) NOT NULL,
+      rejoint_le TIMESTAMP DEFAULT NOW(),
+      UNIQUE (groupe_id, pseudo)
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS messages_groupe (
+      id SERIAL PRIMARY KEY,
+      groupe_id INTEGER NOT NULL REFERENCES groupes(id) ON DELETE CASCADE,
+      auteur VARCHAR(50) NOT NULL,
+      texte TEXT,
+      image_url TEXT,
+      date TIMESTAMP DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS invitations_groupe (
+      id SERIAL PRIMARY KEY,
+      groupe_id INTEGER NOT NULL REFERENCES groupes(id) ON DELETE CASCADE,
+      invite VARCHAR(50) NOT NULL,
+      invite_par VARCHAR(50) NOT NULL,
+      date TIMESTAMP DEFAULT NOW(),
+      UNIQUE (groupe_id, invite)
+    );
+  `);
+
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_membres_pseudo ON membres_groupe (pseudo);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_msg_groupe ON messages_groupe (groupe_id);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_invit_pseudo ON invitations_groupe (invite);`);
+
   // Colonnes de modération sur les comptes
   await pool.query(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;`);
   await pool.query(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS is_banni BOOLEAN DEFAULT FALSE;`);

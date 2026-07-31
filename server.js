@@ -275,6 +275,49 @@ app.post("/admin/bannir", verifierAdmin, async (req, res) => {
   }
 });
 
+// Liste des groupes en attente de validation
+app.get("/admin/groupes-en-attente", verifierAdmin, async (req, res) => {
+  try {
+    const resultat = await pool.query(`
+      SELECT id, titre, createur, cree_le,
+             EXTRACT(DAY FROM NOW() - cree_le)::int AS jours_ecoules
+      FROM groupes
+      WHERE statut = 'en_attente'
+      ORDER BY cree_le ASC
+    `);
+    res.json({ groupes: resultat.rows });
+  } catch (err) {
+    console.error("Erreur groupes en attente :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
+});
+
+// Valider ou refuser un groupe
+app.post("/admin/valider-groupe", verifierAdmin, async (req, res) => {
+  const { id, accepter } = req.body;
+  if (!id) return res.status(400).json({ erreur: "ID manquant." });
+
+  try {
+    if (accepter === true) {
+      await pool.query(
+        "UPDATE groupes SET statut = 'valide', valide_par = $1, valide_le = NOW() WHERE id = $2",
+        [req.session.pseudo, id]
+      );
+      console.log(`${req.session.pseudo} a validé le groupe #${id}`);
+      io.emit("groupe_valide", { id });
+    } else {
+      await pool.query("DELETE FROM groupes WHERE id = $1", [id]);
+      console.log(`${req.session.pseudo} a refusé le groupe #${id}`);
+      io.emit("groupe_supprime", { id });
+    }
+
+    res.json({ succes: true });
+  } catch (err) {
+    console.error("Erreur validation groupe :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
+});
+
 // Supprimer définitivement un compte et tout ce qui lui appartient
 app.post("/admin/supprimer-compte", verifierAdmin, async (req, res) => {
   const { pseudo } = req.body;
@@ -306,6 +349,10 @@ app.post("/admin/supprimer-compte", verifierAdmin, async (req, res) => {
 
     // Supprime tout ce qui est rattaché au compte.
     // Les commentaires et votes des publications partent en cascade.
+    await pool.query("DELETE FROM membres_groupe WHERE pseudo = $1", [pseudo]);
+    await pool.query("DELETE FROM invitations_groupe WHERE invite = $1 OR invite_par = $1", [pseudo]);
+    await pool.query("DELETE FROM messages_groupe WHERE auteur = $1", [pseudo]);
+    await pool.query("DELETE FROM groupes WHERE createur = $1 AND statut = 'en_attente'", [pseudo]);
     await pool.query("DELETE FROM commentaires WHERE auteur = $1", [pseudo]);
     await pool.query("DELETE FROM votes WHERE pseudo = $1", [pseudo]);
     await pool.query("DELETE FROM publications WHERE auteur = $1", [pseudo]);
@@ -602,6 +649,262 @@ io.on("connection", async (socket) => {
     }
   });
 
+  // ---------- GROUPES ----------
+
+  // Vérifie qu'une personne est bien membre d'un groupe validé
+  async function estMembre(groupeId, pseudo) {
+    const r = await pool.query(`
+      SELECT 1 FROM membres_groupe m
+      JOIN groupes g ON g.id = m.groupe_id
+      WHERE m.groupe_id = $1 AND m.pseudo = $2 AND g.statut = 'valide'
+    `, [groupeId, pseudo]);
+    return r.rows.length > 0;
+  }
+
+  // Envoie à la personne la liste de ses groupes et invitations
+  async function envoyerMesGroupes() {
+    try {
+      const groupes = await pool.query(`
+        SELECT g.id, g.titre, g.statut, g.createur,
+               (SELECT COUNT(*) FROM membres_groupe m2 WHERE m2.groupe_id = g.id)::int AS nb_membres
+        FROM groupes g
+        JOIN membres_groupe m ON m.groupe_id = g.id
+        WHERE m.pseudo = $1
+        ORDER BY g.titre
+      `, [monPseudo]);
+
+      const invitations = await pool.query(`
+        SELECT i.id, i.groupe_id, i.invite_par, g.titre
+        FROM invitations_groupe i
+        JOIN groupes g ON g.id = i.groupe_id
+        WHERE i.invite = $1 AND g.statut = 'valide'
+      `, [monPseudo]);
+
+      socket.emit("mes_groupes", {
+        groupes: groupes.rows,
+        invitations: invitations.rows
+      });
+    } catch (err) {
+      console.error("Erreur mes_groupes :", err);
+    }
+  }
+
+  socket.on("demander_mes_groupes", envoyerMesGroupes);
+
+  // Créer un groupe (en attente de validation)
+  socket.on("creer_groupe", async (data) => {
+    const titre = (data.titre || "").trim();
+
+    if (!titre) {
+      socket.emit("erreur_envoi", { message: "Le titre du groupe est obligatoire." });
+      return;
+    }
+
+    if (titre.length > 100) {
+      socket.emit("erreur_envoi", { message: "Titre trop long (100 caractères maximum)." });
+      return;
+    }
+
+    try {
+      const resultat = await pool.query(
+        "INSERT INTO groupes (titre, createur) VALUES ($1, $2) RETURNING id, titre, statut, createur",
+        [titre, monPseudo]
+      );
+
+      const groupe = resultat.rows[0];
+
+      // Le créateur devient automatiquement membre
+      await pool.query(
+        "INSERT INTO membres_groupe (groupe_id, pseudo) VALUES ($1, $2)",
+        [groupe.id, monPseudo]
+      );
+
+      console.log(`${monPseudo} a créé le groupe "${titre}" (en attente)`);
+
+      socket.emit("groupe_cree", { groupe });
+      envoyerMesGroupes();
+
+      // Prévient les admins connectés qu'une demande attend
+      io.emit("demande_groupe_en_attente");
+    } catch (err) {
+      console.error("Erreur création groupe :", err);
+    }
+  });
+
+  // Inviter quelqu'un (réservé aux membres du groupe)
+  socket.on("inviter_groupe", async (data) => {
+    const groupeId = parseInt(data.groupeId, 10);
+    const invite = (data.pseudo || "").trim();
+
+    if (!groupeId || !invite) return;
+
+    try {
+      if (!(await estMembre(groupeId, monPseudo))) {
+        socket.emit("erreur_envoi", { message: "Vous n'êtes pas membre de ce groupe." });
+        return;
+      }
+
+      const existe = await pool.query(
+        "SELECT 1 FROM utilisateurs WHERE pseudo = $1 AND is_banni = FALSE",
+        [invite]
+      );
+      if (existe.rows.length === 0) {
+        socket.emit("erreur_envoi", { message: "Utilisateur introuvable." });
+        return;
+      }
+
+      const dejaMembre = await pool.query(
+        "SELECT 1 FROM membres_groupe WHERE groupe_id = $1 AND pseudo = $2",
+        [groupeId, invite]
+      );
+      if (dejaMembre.rows.length > 0) {
+        socket.emit("erreur_envoi", { message: "Cette personne est déjà dans le groupe." });
+        return;
+      }
+
+      await pool.query(
+        `INSERT INTO invitations_groupe (groupe_id, invite, invite_par)
+         VALUES ($1, $2, $3) ON CONFLICT (groupe_id, invite) DO NOTHING`,
+        [groupeId, invite, monPseudo]
+      );
+
+      socket.emit("erreur_envoi", { message: `Invitation envoyée à ${invite}.` });
+
+      // Notifie la personne invitée si elle est connectée
+      const socketInvite = socketsParPseudo[invite];
+      if (socketInvite) {
+        io.to(socketInvite).emit("nouvelle_invitation");
+      }
+    } catch (err) {
+      console.error("Erreur invitation :", err);
+    }
+  });
+
+  // Accepter ou refuser une invitation
+  socket.on("repondre_invitation", async (data) => {
+    const groupeId = parseInt(data.groupeId, 10);
+    const accepter = data.accepter === true;
+
+    if (!groupeId) return;
+
+    try {
+      const invitation = await pool.query(
+        "SELECT 1 FROM invitations_groupe WHERE groupe_id = $1 AND invite = $2",
+        [groupeId, monPseudo]
+      );
+      if (invitation.rows.length === 0) return;
+
+      if (accepter) {
+        await pool.query(
+          `INSERT INTO membres_groupe (groupe_id, pseudo) VALUES ($1, $2)
+           ON CONFLICT (groupe_id, pseudo) DO NOTHING`,
+          [groupeId, monPseudo]
+        );
+      }
+
+      await pool.query(
+        "DELETE FROM invitations_groupe WHERE groupe_id = $1 AND invite = $2",
+        [groupeId, monPseudo]
+      );
+
+      envoyerMesGroupes();
+    } catch (err) {
+      console.error("Erreur réponse invitation :", err);
+    }
+  });
+
+  // Historique des messages d'un groupe
+  socket.on("demander_historique_groupe", async (data) => {
+    const groupeId = parseInt(data.groupeId, 10);
+    if (!groupeId) return;
+
+    try {
+      if (!(await estMembre(groupeId, monPseudo))) return;
+
+      const resultat = await pool.query(
+        "SELECT id, auteur, texte, image_url, date FROM messages_groupe WHERE groupe_id = $1 ORDER BY id DESC LIMIT 100",
+        [groupeId]
+      );
+
+      const membres = await pool.query(
+        "SELECT pseudo FROM membres_groupe WHERE groupe_id = $1 ORDER BY pseudo",
+        [groupeId]
+      );
+
+      socket.emit("historique_groupe", {
+        groupeId,
+        messages: resultat.rows.reverse(),
+        membres: membres.rows.map(m => m.pseudo)
+      });
+    } catch (err) {
+      console.error("Erreur historique groupe :", err);
+    }
+  });
+
+  // Envoyer un message dans un groupe
+  socket.on("message_groupe", async (data) => {
+    const groupeId = parseInt(data.groupeId, 10);
+    const texte = (data.texte || "").trim();
+    const imageUrl = data.imageUrl || null;
+
+    if (!groupeId || (!texte && !imageUrl)) return;
+
+    try {
+      if (!(await estMembre(groupeId, monPseudo))) {
+        socket.emit("erreur_envoi", { message: "Ce groupe n'est pas encore validé." });
+        return;
+      }
+
+      const resultat = await pool.query(
+        `INSERT INTO messages_groupe (groupe_id, auteur, texte, image_url)
+         VALUES ($1, $2, $3, $4) RETURNING id, auteur, texte, image_url, date`,
+        [groupeId, monPseudo, texte || null, imageUrl]
+      );
+
+      const message = resultat.rows[0];
+
+      // Envoie uniquement aux membres connectés
+      const membres = await pool.query(
+        "SELECT pseudo FROM membres_groupe WHERE groupe_id = $1",
+        [groupeId]
+      );
+
+      membres.rows.forEach(m => {
+        const s = socketsParPseudo[m.pseudo];
+        if (s) io.to(s).emit("message_groupe", { groupeId, message });
+      });
+    } catch (err) {
+      console.error("Erreur message groupe :", err);
+    }
+  });
+
+  // Quitter un groupe
+  socket.on("quitter_groupe", async (data) => {
+    const groupeId = parseInt(data.groupeId, 10);
+    if (!groupeId) return;
+
+    try {
+      await pool.query(
+        "DELETE FROM membres_groupe WHERE groupe_id = $1 AND pseudo = $2",
+        [groupeId, monPseudo]
+      );
+
+      // Si le groupe n'a plus de membres, on le supprime
+      const restants = await pool.query(
+        "SELECT COUNT(*)::int AS n FROM membres_groupe WHERE groupe_id = $1",
+        [groupeId]
+      );
+
+      if (restants.rows[0].n === 0) {
+        await pool.query("DELETE FROM groupes WHERE id = $1", [groupeId]);
+      }
+
+      envoyerMesGroupes();
+    } catch (err) {
+      console.error("Erreur quitter groupe :", err);
+    }
+  });
+
   // ---------- FORUM (Radio 2) ----------
 
   // Charge la liste des publications avec leur score et nombre de commentaires
@@ -749,10 +1052,32 @@ io.on("connection", async (socket) => {
 
 // ---------- DÉMARRAGE ----------
 
+// Supprime les groupes en attente depuis plus de 7 jours
+async function nettoyerGroupesExpires() {
+  try {
+    const resultat = await pool.query(`
+      DELETE FROM groupes
+      WHERE statut = 'en_attente' AND cree_le < NOW() - INTERVAL '7 days'
+      RETURNING id, titre
+    `);
+
+    if (resultat.rows.length > 0) {
+      console.log(`${resultat.rows.length} groupe(s) expiré(s) supprimé(s).`);
+      resultat.rows.forEach(g => io.emit("groupe_supprime", { id: g.id }));
+    }
+  } catch (err) {
+    console.error("Erreur nettoyage groupes :", err);
+  }
+}
+
+// Vérification au démarrage puis toutes les 6 heures
+setInterval(nettoyerGroupesExpires, 6 * 60 * 60 * 1000);
+
 const PORT = process.env.PORT || 3000;
 
 initialiserBase()
   .then(() => {
+    nettoyerGroupesExpires();
     server.listen(PORT, () => {
       console.log(`Serveur lancé sur http://localhost:${PORT}`);
     });

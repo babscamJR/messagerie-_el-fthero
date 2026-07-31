@@ -31,6 +31,15 @@
       </div>
 
       <div class="sidebar-section">
+        <div class="sidebar-titre">
+          Groupes
+          <button id="btn-creer-groupe" title="Créer un groupe">+</button>
+        </div>
+        <div id="liste-invitations"></div>
+        <div id="liste-groupes"></div>
+      </div>
+
+      <div class="sidebar-section">
         <div class="sidebar-titre">Messages privés</div>
         <div id="liste-utilisateurs"></div>
       </div>
@@ -42,7 +51,11 @@
 
       <div class="chat-header">
         <span id="titre-conversation">📻 Radio 1</span>
-        <button id="retour-btn" class="mobile-only">← Retour</button>
+        <span class="header-actions">
+          <button id="btn-inviter" class="cache" title="Inviter quelqu'un">➕ Inviter</button>
+          <button id="btn-quitter-groupe" class="cache" title="Quitter le groupe">Quitter</button>
+          <button id="retour-btn" class="mobile-only">← Retour</button>
+        </span>
       </div>
 
       <!-- Vue forum (Radio 2) -->
@@ -119,6 +132,44 @@
     </div>
   </div>
 
+  <!-- Fenêtre : créer un groupe -->
+  <div id="modal-groupe" class="modal cache">
+    <div class="modal-contenu">
+      <h2>👥 Nouveau groupe</h2>
+      <input type="text" id="groupe-titre" placeholder="Nom du groupe" maxlength="100">
+      <p class="note-modal">Un modérateur devra valider la création. Le groupe sera inutilisable en attendant, et supprimé automatiquement après 7 jours sans réponse.</p>
+      <p id="groupe-erreur" class="erreur-modal"></p>
+      <div class="modal-actions">
+        <button id="groupe-creer">Créer</button>
+        <button id="groupe-fermer" class="secondaire">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fenêtre : inviter dans un groupe -->
+  <div id="modal-inviter" class="modal cache">
+    <div class="modal-contenu">
+      <h2>➕ Inviter dans le groupe</h2>
+      <input type="text" id="inviter-pseudo" placeholder="Pseudo de la personne">
+      <p id="inviter-erreur" class="erreur-modal"></p>
+      <div class="modal-actions">
+        <button id="inviter-envoyer">Inviter</button>
+        <button id="inviter-fermer" class="secondaire">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fenêtre : groupes en attente (admin) -->
+  <div id="modal-groupes-attente" class="modal cache">
+    <div class="modal-contenu large">
+      <h2>⏳ Groupes en attente</h2>
+      <div id="liste-groupes-attente"></div>
+      <div class="modal-actions">
+        <button id="fermer-groupes-attente" class="secondaire">Fermer</button>
+      </div>
+    </div>
+  </div>
+
   <div id="modal-cle" class="modal cache">
     <div class="modal-contenu">
       <h2>Accès modération</h2>
@@ -135,6 +186,7 @@
   <div id="modal-admin" class="modal cache">
     <div class="modal-contenu large">
       <h2>🛡️ Panneau de modération</h2>
+      <button id="btn-groupes-attente" class="bouton-pleine-largeur">⏳ Groupes en attente de validation</button>
       <div id="liste-admin"></div>
       <div class="modal-actions">
         <button id="fermer-admin" class="secondaire">Fermer</button>
