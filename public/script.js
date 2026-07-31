@@ -429,6 +429,24 @@ function reinitialiserImagePub() {
   pubApercuImg.src = "";
 }
 
+// ---------- Zone de saisie extensible ----------
+
+// Recalcule la hauteur pour coller au contenu
+function ajusterHauteurSaisie() {
+  messageInput.style.height = "auto";
+  messageInput.style.height = messageInput.scrollHeight + "px";
+}
+
+messageInput.addEventListener("input", ajusterHauteurSaisie);
+
+// Entrée envoie le message, Maj+Entrée passe à la ligne
+messageInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    messageForm.requestSubmit();
+  }
+});
+
 // ---------- GROUPES ----------
 
 function afficherMesGroupes(donnees) {
@@ -1094,6 +1112,7 @@ function demarrerChat() {
     }
 
     messageInput.value = "";
+    ajusterHauteurSaisie();
     reinitialiserImage();
   });
 

@@ -1397,3 +1397,54 @@ body {
     font-size: 15px;
   }
 }
+
+/* ---------- Zone de saisie extensible ---------- */
+
+#message-form {
+  align-items: flex-end;
+}
+
+#message-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 11px 14px;
+  background-color: var(--bg-page);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.45;
+  resize: none;
+  overflow-y: auto;
+  max-height: 140px;
+  box-sizing: border-box;
+}
+
+#message-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+#message-input::-webkit-scrollbar {
+  width: 5px;
+}
+
+#message-input::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 10px;
+}
+
+/* Les boutons restent alignés en bas quand la zone grandit */
+#btn-image,
+#btn-emoji,
+#btn-envoyer {
+  align-self: flex-end;
+}
+
+@media (max-width: 480px) {
+  #message-input {
+    font-size: 16px;
+    max-height: 110px;
+  }
+}
