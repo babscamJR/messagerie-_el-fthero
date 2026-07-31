@@ -1169,3 +1169,87 @@ button.danger-fort:hover {
     flex: 1;
   }
 }
+/* ==========================================================
+   CORRECTIF AFFICHAGE — à garder en dernier dans le fichier
+   ========================================================== */
+
+/* L'application occupe toute la fenêtre */
+body {
+  display: block;
+  margin: 0;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.app-container {
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  display: flex;
+}
+
+/* La zone de saisie ne doit jamais déborder */
+#message-form {
+  width: 100%;
+  max-width: 900px;
+  margin: 10px auto 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+#message-form input[type="text"] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#btn-image,
+#btn-emoji,
+#btn-envoyer {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* ---------- Mobile ---------- */
+
+@media (max-width: 700px) {
+  .chat-container {
+    padding: 12px;
+  }
+
+  #message-form {
+    gap: 5px;
+  }
+
+  #btn-image,
+  #btn-emoji {
+    padding: 9px 10px;
+    font-size: 15px;
+  }
+
+  #btn-envoyer {
+    padding: 9px 12px;
+    font-size: 13px;
+  }
+
+  .chat-header {
+    font-size: 15px;
+  }
+}
+
+/* Écrans très étroits : le bouton Envoyer devient une flèche */
+@media (max-width: 420px) {
+  #btn-envoyer {
+    font-size: 0;
+    padding: 9px 12px;
+  }
+
+  #btn-envoyer::after {
+    content: "➤";
+    font-size: 15px;
+  }
+}
