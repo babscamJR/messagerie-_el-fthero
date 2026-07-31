@@ -275,6 +275,55 @@ app.post("/admin/bannir", verifierAdmin, async (req, res) => {
   }
 });
 
+// Supprimer définitivement un compte et tout ce qui lui appartient
+app.post("/admin/supprimer-compte", verifierAdmin, async (req, res) => {
+  const { pseudo } = req.body;
+
+  if (!pseudo) {
+    return res.status(400).json({ erreur: "Pseudo manquant." });
+  }
+
+  if (pseudo === req.session.pseudo) {
+    return res.status(400).json({ erreur: "Vous ne pouvez pas supprimer votre propre compte." });
+  }
+
+  try {
+    const cible = await pool.query(
+      "SELECT is_admin FROM utilisateurs WHERE pseudo = $1",
+      [pseudo]
+    );
+
+    if (cible.rows.length === 0) {
+      return res.status(404).json({ erreur: "Utilisateur introuvable." });
+    }
+
+    if (cible.rows[0].is_admin) {
+      return res.status(403).json({ erreur: "Impossible de supprimer un administrateur." });
+    }
+
+    // Déconnecte la personne avant de tout effacer
+    deconnecterUtilisateur(pseudo);
+
+    // Supprime tout ce qui est rattaché au compte.
+    // Les commentaires et votes des publications partent en cascade.
+    await pool.query("DELETE FROM commentaires WHERE auteur = $1", [pseudo]);
+    await pool.query("DELETE FROM votes WHERE pseudo = $1", [pseudo]);
+    await pool.query("DELETE FROM publications WHERE auteur = $1", [pseudo]);
+    await pool.query("DELETE FROM messages_prives WHERE auteur = $1 OR destinataire = $1", [pseudo]);
+    await pool.query("DELETE FROM messages_publics WHERE auteur = $1", [pseudo]);
+    await pool.query("DELETE FROM utilisateurs WHERE pseudo = $1", [pseudo]);
+
+    console.log(`${req.session.pseudo} a SUPPRIMÉ le compte ${pseudo}`);
+
+    io.emit("compte_supprime", { pseudo });
+
+    res.json({ succes: true });
+  } catch (err) {
+    console.error("Erreur suppression compte :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
+});
+
 // Supprimer une publication du forum (et ses commentaires/votes en cascade)
 app.post("/admin/supprimer-publication", verifierAdmin, async (req, res) => {
   const { id } = req.body;

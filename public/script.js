@@ -1,1083 +1,763 @@
-// script.js - logique côté client
+// server.js
+require("dotenv").config();
 
-let monPseudo = "";
-let socket = null;
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+const session = require("express-session");
+const pgSession = require("connect-pg-simple")(session);
+const bcrypt = require("bcryptjs");
 
-// Conversation active : { type: "salon", id: "radio1" } ou { type: "prive", id: "pseudo" }
-let conversationActuelle = { type: "salon", id: "radio1" };
+const { pool, initialiserBase } = require("./db");
+const cloudinary = require("cloudinary").v2;
+const multer = require("multer");
 
-// Liste des salons reçue du serveur
-let salonsDisponibles = {};
+// Configuration Cloudinary (les clés viennent des variables d'environnement)
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
-const messagesDiv = document.getElementById("messages");
-const messageForm = document.getElementById("message-form");
-const messageInput = document.getElementById("message-input");
-const deconnexionBtn = document.getElementById("deconnexion-btn");
-const listeUtilisateursDiv = document.getElementById("liste-utilisateurs");
-const listeSalonsDiv = document.getElementById("liste-salons");
+// Multer garde le fichier en mémoire le temps de l'envoyer à Cloudinary
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 Mo maximum
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Seules les images sont autorisées."));
+    }
+  }
+});
 
-// Forum
-const forumBox = document.getElementById("forum-box");
-const chatBox = document.getElementById("chat-box");
-const listePublications = document.getElementById("liste-publications");
-const btnNouvellePub = document.getElementById("btn-nouvelle-pub");
-const modalPublication = document.getElementById("modal-publication");
-const pubTitre = document.getElementById("pub-titre");
-const pubContenu = document.getElementById("pub-contenu");
-const pubImage = document.getElementById("pub-image");
-const pubBtnImage = document.getElementById("pub-btn-image");
-const pubApercu = document.getElementById("pub-apercu");
-const pubApercuImg = document.getElementById("pub-apercu-img");
-const pubAnnulerImage = document.getElementById("pub-annuler-image");
-const pubErreur = document.getElementById("pub-erreur");
-const pubPublier = document.getElementById("pub-publier");
-const pubFermer = document.getElementById("pub-fermer");
-const modalDetail = document.getElementById("modal-detail");
-const detailContenu = document.getElementById("detail-contenu");
-const detailCommentaires = document.getElementById("detail-commentaires");
-const inputCommentaire = document.getElementById("input-commentaire");
-const envoyerCommentaire = document.getElementById("envoyer-commentaire");
-const detailFermer = document.getElementById("detail-fermer");
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
 
-let publicationOuverte = null;
-let publicationsCache = [];
-let pubFichierSelectionne = null;
-const titreConversation = document.getElementById("titre-conversation");
-const appContainer = document.querySelector(".app-container");
-const retourBtn = document.getElementById("retour-btn");
-const inputFichier = document.getElementById("input-fichier");
-const btnImage = document.getElementById("btn-image");
-const apercuImage = document.getElementById("apercu-image");
-const apercuImg = document.getElementById("apercu-img");
-const annulerImage = document.getElementById("annuler-image");
-const btnEnvoyer = document.getElementById("btn-envoyer");
+// Salons publics disponibles
+// adminSeul: true => seuls les administrateurs peuvent y écrire
+const SALONS = {
+  radio1: { nom: "📻 Radio 1", adminSeul: false, type: "chat" },
+  radio2: { nom: "👻 Radio 2 (HR)", adminSeul: false, type: "forum" },
+  radio3: { nom: "📢 Radio 3 (Annonces)", adminSeul: true, type: "chat" }
+};
 
-// Fichier image sélectionné, en attente d'envoi
-let fichierSelectionne = null;
-
-// Statut administrateur
-let jeSuisAdmin = false;
-
-const titreApp = document.getElementById("titre-app");
-const adminBtn = document.getElementById("admin-btn");
-const modalCle = document.getElementById("modal-cle");
-const inputCle = document.getElementById("input-cle");
-const erreurCle = document.getElementById("erreur-cle");
-const validerCle = document.getElementById("valider-cle");
-const fermerCle = document.getElementById("fermer-cle");
-const modalAdmin = document.getElementById("modal-admin");
-const listeAdmin = document.getElementById("liste-admin");
-const fermerAdmin = document.getElementById("fermer-admin");
-
-// Compte les clics rapides sur le titre pour ouvrir le menu caché
-let compteurClics = 0;
-let minuteurClics = null;
-
-// Stocke les messages déjà reçus pour chaque conversation, pour ne pas les recharger à chaque clic
-const cacheMessages = {};
-
-// Construit une clé de cache unique par conversation
-function cleCache(conv) {
-  return conv.type + ":" + conv.id;
+// Donne toujours le même identifiant pour une conversation entre 2 pseudos
+function idConversation(pseudoA, pseudoB) {
+  return [pseudoA, pseudoB].sort().join("|");
 }
 
-async function verifierConnexion() {
-  const reponse = await fetch("/moi");
-  const data = await reponse.json();
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-  if (!data.connecte) {
-    window.location.href = "/connexion.html";
-    return;
+// Les sessions sont stockées en base (elles survivent aux redémarrages)
+const sessionMiddleware = session({
+  store: new pgSession({
+    pool: pool,
+    tableName: "sessions",
+    createTableIfMissing: true
+  }),
+  secret: process.env.SESSION_SECRET || "secret-de-developpement-a-changer",
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 } // 7 jours
+});
+app.use(sessionMiddleware);
+
+app.use(express.static("public"));
+
+// ---------- AUTHENTIFICATION ----------
+
+app.post("/inscription", async (req, res) => {
+  try {
+    const { pseudo, motdepasse } = req.body;
+
+    if (!pseudo || !motdepasse) {
+      return res.status(400).json({ erreur: "Pseudo et mot de passe requis." });
+    }
+
+    const existant = await pool.query(
+      "SELECT id FROM utilisateurs WHERE LOWER(pseudo) = LOWER($1)",
+      [pseudo]
+    );
+
+    if (existant.rows.length > 0) {
+      return res.status(400).json({ erreur: "Ce pseudo est déjà pris." });
+    }
+
+    const motdepasseCrypte = bcrypt.hashSync(motdepasse, 10);
+
+    await pool.query(
+      "INSERT INTO utilisateurs (pseudo, motdepasse) VALUES ($1, $2)",
+      [pseudo, motdepasseCrypte]
+    );
+
+    req.session.pseudo = pseudo;
+    res.json({ succes: true });
+  } catch (err) {
+    console.error("Erreur inscription :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
+});
+
+app.post("/connexion", async (req, res) => {
+  try {
+    const { pseudo, motdepasse } = req.body;
+
+    const resultat = await pool.query(
+      "SELECT pseudo, motdepasse, is_banni FROM utilisateurs WHERE LOWER(pseudo) = LOWER($1)",
+      [pseudo]
+    );
+
+    if (resultat.rows.length === 0) {
+      return res.status(400).json({ erreur: "Pseudo ou mot de passe incorrect." });
+    }
+
+    const utilisateur = resultat.rows[0];
+    const valide = bcrypt.compareSync(motdepasse, utilisateur.motdepasse);
+
+    if (!valide) {
+      return res.status(400).json({ erreur: "Pseudo ou mot de passe incorrect." });
+    }
+
+    if (utilisateur.is_banni) {
+      return res.status(403).json({ erreur: "Ce compte a été banni." });
+    }
+
+    req.session.pseudo = utilisateur.pseudo;
+    res.json({ succes: true });
+  } catch (err) {
+    console.error("Erreur connexion :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
+});
+
+app.post("/deconnexion", (req, res) => {
+  req.session.destroy(() => {
+    res.json({ succes: true });
+  });
+});
+
+app.get("/moi", async (req, res) => {
+  if (!req.session.pseudo) {
+    return res.json({ connecte: false });
   }
 
-  monPseudo = data.pseudo;
-  jeSuisAdmin = data.isAdmin === true;
+  try {
+    const resultat = await pool.query(
+      "SELECT is_admin, is_banni FROM utilisateurs WHERE pseudo = $1",
+      [req.session.pseudo]
+    );
 
-  if (jeSuisAdmin) {
-    adminBtn.classList.remove("cache");
+    // Compte supprimé ou banni entre-temps
+    if (resultat.rows.length === 0 || resultat.rows[0].is_banni) {
+      return req.session.destroy(() => res.json({ connecte: false }));
+    }
+
+    res.json({
+      connecte: true,
+      pseudo: req.session.pseudo,
+      isAdmin: resultat.rows[0].is_admin
+    });
+  } catch (err) {
+    console.error("Erreur /moi :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
   }
-
-  demarrerChat();
-  chargerListeUtilisateurs();
-}
+});
 
 // ---------- MODÉRATION ----------
 
-// 5 clics rapides sur le titre ouvrent la saisie de clé
-titreApp.addEventListener("click", () => {
-  if (jeSuisAdmin) return; // déjà admin, inutile
+// Vérifie que la personne connectée est bien admin
+async function estAdmin(pseudo) {
+  if (!pseudo) return false;
+  const resultat = await pool.query(
+    "SELECT is_admin FROM utilisateurs WHERE pseudo = $1",
+    [pseudo]
+  );
+  return resultat.rows.length > 0 && resultat.rows[0].is_admin === true;
+}
 
-  compteurClics++;
-  clearTimeout(minuteurClics);
-  minuteurClics = setTimeout(() => { compteurClics = 0; }, 1500);
-
-  if (compteurClics >= 5) {
-    compteurClics = 0;
-    erreurCle.textContent = "";
-    inputCle.value = "";
-    modalCle.classList.remove("cache");
-    inputCle.focus();
+// Middleware : bloque l'accès aux routes admin
+async function verifierAdmin(req, res, next) {
+  if (!req.session.pseudo) {
+    return res.status(401).json({ erreur: "Non connecté." });
   }
-});
-
-fermerCle.addEventListener("click", () => modalCle.classList.add("cache"));
-
-validerCle.addEventListener("click", async () => {
-  const cle = inputCle.value;
-  if (!cle) return;
-
-  const reponse = await fetch("/devenir-admin", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cle })
-  });
-
-  const data = await reponse.json();
-
-  if (data.succes) {
-    jeSuisAdmin = true;
-    adminBtn.classList.remove("cache");
-    modalCle.classList.add("cache");
-    construireListeSalons();   // retire les cadenas
-    mettreAJourZoneSaisie();    // débloque la saisie
-    alert("Vous êtes maintenant administrateur.");
-  } else {
-    erreurCle.textContent = data.erreur || "Erreur.";
+  if (!(await estAdmin(req.session.pseudo))) {
+    return res.status(403).json({ erreur: "Accès refusé." });
   }
-});
+  next();
+}
 
-inputCle.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") validerCle.click();
-});
+// Devenir admin avec la clé secrète (une seule fois, ensuite le rôle est permanent)
+app.post("/devenir-admin", async (req, res) => {
+  if (!req.session.pseudo) {
+    return res.status(401).json({ erreur: "Non connecté." });
+  }
 
-adminBtn.addEventListener("click", ouvrirPanneauAdmin);
-fermerAdmin.addEventListener("click", () => modalAdmin.classList.add("cache"));
+  const cleAttendue = process.env.ADMIN_KEY;
 
-async function ouvrirPanneauAdmin() {
-  modalAdmin.classList.remove("cache");
-  listeAdmin.innerHTML = "<p>Chargement...</p>";
+  if (!cleAttendue) {
+    return res.status(500).json({ erreur: "Aucune clé admin configurée sur le serveur." });
+  }
+
+  if (req.body.cle !== cleAttendue) {
+    console.warn(`Tentative admin échouée par ${req.session.pseudo}`);
+    return res.status(403).json({ erreur: "Clé incorrecte." });
+  }
 
   try {
-    const reponse = await fetch("/admin/utilisateurs");
-    const data = await reponse.json();
-
-    if (!data.utilisateurs) {
-      listeAdmin.innerHTML = "<p>Erreur de chargement.</p>";
-      return;
-    }
-
-    listeAdmin.innerHTML = "";
-    data.utilisateurs.forEach(u => {
-      const ligne = document.createElement("div");
-      ligne.classList.add("ligne-admin");
-
-      const infos = document.createElement("div");
-      let badge = "";
-      if (u.is_admin) badge = ' <span class="badge admin">admin</span>';
-      else if (u.is_banni) badge = ' <span class="badge banni">banni</span>';
-      infos.innerHTML = `<strong>${u.pseudo}</strong>${badge}`;
-      ligne.appendChild(infos);
-
-      // Pas de bouton pour soi-même ni pour les autres admins
-      if (u.pseudo !== monPseudo && !u.is_admin) {
-        const bouton = document.createElement("button");
-        bouton.textContent = u.is_banni ? "Débannir" : "Bannir";
-        bouton.classList.add(u.is_banni ? "secondaire" : "danger");
-        bouton.addEventListener("click", () => basculerBannissement(u.pseudo, !u.is_banni));
-        ligne.appendChild(bouton);
-      }
-
-      listeAdmin.appendChild(ligne);
-    });
+    await pool.query(
+      "UPDATE utilisateurs SET is_admin = TRUE WHERE pseudo = $1",
+      [req.session.pseudo]
+    );
+    console.log(`${req.session.pseudo} est devenu administrateur.`);
+    res.json({ succes: true });
   } catch (err) {
-    listeAdmin.innerHTML = "<p>Erreur de chargement.</p>";
-  }
-}
-
-async function basculerBannissement(pseudo, bannir) {
-  const action = bannir ? "bannir" : "débannir";
-  if (!confirm(`Voulez-vous vraiment ${action} ${pseudo} ?`)) return;
-
-  const reponse = await fetch("/admin/bannir", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pseudo, bannir })
-  });
-
-  const data = await reponse.json();
-
-  if (data.succes) {
-    ouvrirPanneauAdmin(); // recharge la liste
-    chargerListeUtilisateurs();
-  } else {
-    alert(data.erreur || "Erreur.");
-  }
-}
-
-async function supprimerMessage(id, type) {
-  if (!confirm("Supprimer ce message ?")) return;
-
-  const reponse = await fetch("/admin/supprimer-message", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id, type })
-  });
-
-  const data = await reponse.json();
-  if (!data.succes) {
-    alert(data.erreur || "Erreur.");
-  }
-}
-
-async function chargerListeUtilisateurs() {
-  const reponse = await fetch("/utilisateurs");
-  const data = await reponse.json();
-
-  listeUtilisateursDiv.innerHTML = "";
-  data.utilisateurs.forEach(pseudo => {
-    const item = document.createElement("div");
-    item.classList.add("salon-item");
-    item.textContent = "👤 " + pseudo;
-    item.dataset.pseudo = pseudo;
-    item.addEventListener("click", () => ouvrirConversationPrivee(pseudo));
-    listeUtilisateursDiv.appendChild(item);
-  });
-}
-
-function construireListeSalons() {
-  listeSalonsDiv.innerHTML = "";
-
-  Object.keys(salonsDisponibles).forEach(id => {
-    const salon = salonsDisponibles[id];
-    const item = document.createElement("div");
-    item.classList.add("salon-item");
-    item.dataset.salonId = id;
-    item.textContent = salon.nom;
-
-    // Petit cadenas sur les salons en lecture seule pour les non-admins
-    if (salon.adminSeul && !jeSuisAdmin) {
-      const cadenas = document.createElement("span");
-      cadenas.classList.add("cadenas");
-      cadenas.textContent = "🔒";
-      cadenas.title = "Lecture seule";
-      item.appendChild(cadenas);
-    }
-
-    item.addEventListener("click", () => ouvrirSalon(id));
-    listeSalonsDiv.appendChild(item);
-  });
-
-  // Marque le salon actif
-  if (conversationActuelle.type === "salon") {
-    const actif = listeSalonsDiv.querySelector(`[data-salon-id="${conversationActuelle.id}"]`);
-    if (actif) actif.classList.add("actif");
-  }
-}
-
-function marquerActif(element) {
-  document.querySelectorAll(".salon-item").forEach(el => el.classList.remove("actif"));
-  element.classList.add("actif");
-}
-
-function ouvrirSalon(id) {
-  if (!salonsDisponibles[id]) return;
-
-  conversationActuelle = { type: "salon", id };
-  titreConversation.textContent = salonsDisponibles[id].nom;
-
-  const item = listeSalonsDiv.querySelector(`[data-salon-id="${id}"]`);
-  if (item) marquerActif(item);
-
-  appContainer.classList.add("mobile-vue-chat");
-  majFondCubes();
-
-  const estForum = salonsDisponibles[id].type === "forum";
-
-  if (estForum) {
-    chatBox.classList.add("cache");
-    forumBox.classList.remove("cache");
-    listePublications.innerHTML = "<p class=\"info-vide\">Chargement...</p>";
-    socket.emit("demander_publications", { salon: id });
-  } else {
-    forumBox.classList.add("cache");
-    chatBox.classList.remove("cache");
-    mettreAJourZoneSaisie();
-
-    const cle = cleCache(conversationActuelle);
-    if (cacheMessages[cle]) {
-      afficherMessages(cacheMessages[cle]);
-    } else {
-      messagesDiv.innerHTML = "";
-      socket.emit("demander_historique_salon", { salon: id });
-    }
-  }
-}
-
-// Désactive la zone de saisie si le salon est en lecture seule
-function mettreAJourZoneSaisie() {
-  const estSalon = conversationActuelle.type === "salon";
-  const salon = estSalon ? salonsDisponibles[conversationActuelle.id] : null;
-  const lectureSeule = salon && salon.adminSeul && !jeSuisAdmin;
-
-  messageInput.disabled = lectureSeule;
-  btnEnvoyer.disabled = lectureSeule;
-  btnImage.disabled = lectureSeule;
-  btnEmoji.disabled = lectureSeule;
-
-  messageInput.placeholder = lectureSeule
-    ? "Salon en lecture seule"
-    : "Écris un message...";
-}
-
-function ouvrirConversationPrivee(pseudo) {
-  conversationActuelle = { type: "prive", id: pseudo };
-  titreConversation.textContent = "👤 " + pseudo;
-
-  const item = [...document.querySelectorAll("#liste-utilisateurs .salon-item")]
-    .find(el => el.dataset.pseudo === pseudo);
-  if (item) marquerActif(item);
-
-  appContainer.classList.add("mobile-vue-chat");
-  majFondCubes();
-  forumBox.classList.add("cache");
-  chatBox.classList.remove("cache");
-  mettreAJourZoneSaisie();
-
-  const cle = cleCache(conversationActuelle);
-  if (cacheMessages[cle]) {
-    afficherMessages(cacheMessages[cle]);
-  } else {
-    messagesDiv.innerHTML = "";
-    socket.emit("demander_historique_prive", { destinataire: pseudo });
-  }
-}
-
-function reinitialiserImagePub() {
-  pubFichierSelectionne = null;
-  pubImage.value = "";
-  pubApercu.classList.add("cache");
-  pubApercuImg.src = "";
-}
-
-// ---------- Fond animé (grille de cubes) ----------
-
-const fondCubes = document.getElementById("fond-cubes");
-
-function construireFondCubes() {
-  if (!fondCubes || fondCubes.dataset.pret) return;
-
-  // Moins de cubes sur mobile pour préserver les performances
-  const taille = window.innerWidth < 700 ? 5 : 7;
-
-  const scene = document.createElement("div");
-  scene.classList.add("cubes-scene");
-  scene.style.gridTemplateColumns = `repeat(${taille}, 1fr)`;
-  scene.style.gridTemplateRows = `repeat(${taille}, 1fr)`;
-
-  const faces = ["top", "bottom", "left", "right", "front", "back"];
-
-  for (let ligne = 0; ligne < taille; ligne++) {
-    for (let colonne = 0; colonne < taille; colonne++) {
-      const cube = document.createElement("div");
-      cube.classList.add("cube");
-      cube.style.setProperty("--taille", "100%");
-
-      // Le délai crée une vague qui traverse la grille en diagonale
-      const distance = ligne + colonne;
-      cube.style.animationDelay = (distance * 0.18) + "s";
-
-      faces.forEach(nom => {
-        const face = document.createElement("div");
-        face.classList.add("cube-face", "cube-face--" + nom);
-        cube.appendChild(face);
-      });
-
-      scene.appendChild(cube);
-    }
-  }
-
-  fondCubes.appendChild(scene);
-  fondCubes.dataset.pret = "1";
-}
-
-// Affiche le fond uniquement dans Radio 1
-function majFondCubes() {
-  if (!fondCubes) return;
-
-  const actif = conversationActuelle.type === "salon" && conversationActuelle.id === "radio1";
-
-  if (actif) {
-    construireFondCubes();
-    fondCubes.classList.remove("cache");
-  } else {
-    fondCubes.classList.add("cache");
-  }
-}
-
-// ---------- FORUM ----------
-
-function afficherPublications(publications) {
-  publicationsCache = publications;
-  listePublications.innerHTML = "";
-
-  if (publications.length === 0) {
-    listePublications.innerHTML = "<p class=\"info-vide\">Aucune histoire pour le moment. Sois le premier !</p>";
-    return;
-  }
-
-  publications.forEach(pub => listePublications.appendChild(creerCartePublication(pub)));
-}
-
-function creerCartePublication(pub) {
-  const carte = document.createElement("div");
-  carte.classList.add("publication");
-  carte.dataset.pubId = pub.id;
-
-  // Colonne de vote
-  const votes = document.createElement("div");
-  votes.classList.add("votes");
-
-  const btnUp = document.createElement("button");
-  btnUp.textContent = "▲";
-  btnUp.classList.add("btn-vote");
-  if (pub.mon_vote === 1) btnUp.classList.add("actif-up");
-  btnUp.addEventListener("click", (e) => {
-    e.stopPropagation();
-    voter(pub.id, pub.mon_vote === 1 ? 0 : 1);
-  });
-
-  const scoreEl = document.createElement("div");
-  scoreEl.classList.add("score");
-  scoreEl.textContent = pub.score;
-
-  const btnDown = document.createElement("button");
-  btnDown.textContent = "▼";
-  btnDown.classList.add("btn-vote");
-  if (pub.mon_vote === -1) btnDown.classList.add("actif-down");
-  btnDown.addEventListener("click", (e) => {
-    e.stopPropagation();
-    voter(pub.id, pub.mon_vote === -1 ? 0 : -1);
-  });
-
-  votes.append(btnUp, scoreEl, btnDown);
-
-  // Contenu de la carte
-  const corps = document.createElement("div");
-  corps.classList.add("pub-corps");
-
-  const titre = document.createElement("div");
-  titre.classList.add("pub-titre");
-  titre.textContent = pub.titre;
-
-  const meta = document.createElement("div");
-  meta.classList.add("pub-meta");
-  meta.textContent = `par ${pub.auteur} · 💬 ${pub.nb_commentaires}`;
-
-  corps.append(titre, meta);
-
-  if (pub.image_url) {
-    const vignette = document.createElement("img");
-    vignette.src = pub.image_url;
-    vignette.classList.add("pub-vignette");
-    corps.appendChild(vignette);
-  }
-
-  carte.append(votes, corps);
-
-  // Bouton de suppression pour les admins
-  if (jeSuisAdmin) {
-    const btnSuppr = document.createElement("button");
-    btnSuppr.classList.add("btn-supprimer-pub");
-    btnSuppr.textContent = "🗑";
-    btnSuppr.addEventListener("click", (e) => {
-      e.stopPropagation();
-      supprimerPublication(pub.id);
-    });
-    carte.appendChild(btnSuppr);
-  }
-
-  corps.addEventListener("click", () => ouvrirDetail(pub.id));
-
-  return carte;
-}
-
-function voter(publicationId, valeur) {
-  const pub = publicationsCache.find(p => p.id === publicationId);
-  if (pub) pub.mon_vote = valeur;
-  socket.emit("voter", { publicationId, valeur });
-}
-
-async function supprimerPublication(id) {
-  if (!confirm("Supprimer cette publication et tous ses commentaires ?")) return;
-
-  const reponse = await fetch("/admin/supprimer-publication", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id })
-  });
-
-  const data = await reponse.json();
-  if (!data.succes) alert(data.erreur || "Erreur.");
-}
-
-function ouvrirDetail(publicationId) {
-  const pub = publicationsCache.find(p => p.id === publicationId);
-  if (!pub) return;
-
-  publicationOuverte = publicationId;
-  modalDetail.classList.remove("cache");
-
-  detailContenu.innerHTML = "";
-
-  const titre = document.createElement("h2");
-  titre.textContent = pub.titre;
-
-  const meta = document.createElement("div");
-  meta.classList.add("pub-meta");
-  meta.textContent = "par " + pub.auteur;
-
-  detailContenu.append(titre, meta);
-
-  if (pub.image_url) {
-    const img = document.createElement("img");
-    img.src = pub.image_url;
-    img.classList.add("detail-image");
-    img.addEventListener("click", () => window.open(pub.image_url, "_blank"));
-    detailContenu.appendChild(img);
-  }
-
-  if (pub.contenu) {
-    const contenu = document.createElement("p");
-    contenu.classList.add("detail-texte");
-    contenu.textContent = pub.contenu;
-    detailContenu.appendChild(contenu);
-  }
-
-  detailCommentaires.innerHTML = "<p class=\"info-vide\">Chargement des commentaires...</p>";
-  socket.emit("demander_commentaires", { publicationId });
-}
-
-function afficherCommentaires(commentaires) {
-  detailCommentaires.innerHTML = "";
-
-  if (commentaires.length === 0) {
-    detailCommentaires.innerHTML = "<p class=\"info-vide\">Aucun commentaire.</p>";
-    return;
-  }
-
-  commentaires.forEach(c => detailCommentaires.appendChild(creerCommentaire(c)));
-}
-
-function creerCommentaire(c) {
-  const el = document.createElement("div");
-  el.classList.add("commentaire");
-  el.dataset.commentaireId = c.id;
-
-  const auteur = document.createElement("span");
-  auteur.classList.add("auteur");
-  auteur.textContent = c.auteur;
-
-  const texte = document.createElement("div");
-  texte.textContent = c.texte;
-
-  el.append(auteur, texte);
-
-  if (jeSuisAdmin) {
-    const btnSuppr = document.createElement("button");
-    btnSuppr.classList.add("btn-supprimer");
-    btnSuppr.textContent = "🗑";
-    btnSuppr.addEventListener("click", async () => {
-      if (!confirm("Supprimer ce commentaire ?")) return;
-      await fetch("/admin/supprimer-commentaire", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: c.id })
-      });
-    });
-    el.appendChild(btnSuppr);
-  }
-
-  return el;
-}
-
-function afficherMessages(liste) {
-  messagesDiv.innerHTML = "";
-  liste.forEach(ajouterMessageAffiche);
-  messagesDiv.scrollTop = messagesDiv.scrollHeight;
-}
-
-function ajouterMessageAffiche(data) {
-  const messageEl = document.createElement("div");
-  messageEl.classList.add("message");
-  messageEl.classList.add(data.auteur === monPseudo ? "mine" : "other");
-
-  // Nom de l'auteur
-  const auteurEl = document.createElement("span");
-  auteurEl.classList.add("auteur");
-  auteurEl.textContent = data.auteur;
-  messageEl.appendChild(auteurEl);
-
-  // Image éventuelle
-  if (data.image_url) {
-    const img = document.createElement("img");
-    img.src = data.image_url;
-    img.classList.add("message-image");
-    img.addEventListener("click", () => window.open(data.image_url, "_blank"));
-    messageEl.appendChild(img);
-  }
-
-  // Texte éventuel (textContent évite les injections de code)
-  if (data.texte) {
-    const texteEl = document.createElement("div");
-    texteEl.textContent = data.texte;
-
-    // Si le message ne contient que des emojis (max 3), on l'affiche en grand
-    if (estUniquementEmojis(data.texte)) {
-      texteEl.classList.add("emoji-seul");
-    }
-
-    messageEl.appendChild(texteEl);
-  }
-
-  // Bouton de suppression visible uniquement pour les admins
-  if (jeSuisAdmin && data.id) {
-    const btnSuppr = document.createElement("button");
-    btnSuppr.classList.add("btn-supprimer");
-    btnSuppr.textContent = "🗑";
-    btnSuppr.title = "Supprimer ce message";
-    const type = conversationActuelle.type === "salon" ? "public" : "prive";
-    btnSuppr.addEventListener("click", () => supprimerMessage(data.id, type));
-    messageEl.appendChild(btnSuppr);
-  }
-
-  if (data.id) {
-    messageEl.dataset.messageId = data.id;
-  }
-
-  messagesDiv.appendChild(messageEl);
-}
-
-// Détecte si un texte ne contient que des emojis (3 maximum)
-function estUniquementEmojis(texte) {
-  const sansEspaces = texte.replace(/\s/g, "");
-  if (!sansEspaces) return false;
-
-  const regexEmoji = /^(\p{Extended_Pictographic}|\p{Emoji_Component})+$/u;
-  if (!regexEmoji.test(sansEspaces)) return false;
-
-  // Compte approximativement le nombre d'emojis
-  const nombre = [...new Intl.Segmenter().segment(sansEspaces)].length;
-  return nombre <= 3;
-}
-
-// ---------- Sélecteur d'emojis ----------
-
-const EMOJIS = {
-  "😀": ["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","😋","😛","😜","🤪","😝","🤗","🤭","🤫","🤔","🤐","😐","😑","😶","😏","😒","🙄","😬","😔","😪","🤤","😴","😷","🤒","🤕","🥴","😵","🤯","🤠","🥳","😎","🤓","🧐","😕","😟","🙁","😮","😯","😲","😳","🥺","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈","💀","💩","🤡","👻","👽","🤖"],
-  "👍": ["👍","👎","👌","🤌","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","👇","☝️","✋","🤚","🖐️","🖖","👋","🤝","🙏","✍️","💪","🦵","👏","🙌","👐","🤲","🫶","💅","👀","👁️","👅","👄","🧠","🦷"],
-  "❤️": ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","🔥","✨","⭐","🌟","💫","💥","💯","💢","💤","🎉","🎊","🎁","🎈","🏆","🥇","🥈","🥉"],
-  "🐶": ["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧","🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🐛","🦋","🐌","🐞","🐢","🐍","🐙","🦑","🦀","🐠","🐟","🐬","🐳","🦈","🐊","🐅","🦓","🦍","🐘","🦒","🐄","🐎","🐖","🐑","🦙"],
-  "🍕": ["🍕","🍔","🍟","🌭","🥪","🌮","🌯","🥙","🧆","🥚","🍳","🥘","🍲","🥗","🍿","🧈","🍞","🥐","🥖","🥨","🧀","🥞","🧇","🥓","🍗","🍖","🍤","🍣","🍱","🍜","🍝","🍛","🍚","🍘","🍥","🥟","🍦","🍰","🎂","🧁","🍫","🍬","🍭","🍩","🍪","☕","🍵","🥤","🧃","🍺","🍻","🥂","🍷","🥃","🍾"],
-  "⚽": ["⚽","🏀","🏈","⚾","🎾","🏐","🏉","🎱","🏓","🏸","🥅","⛳","🏹","🎣","🥊","🥋","🎿","⛷️","🏂","🏋️","🤸","⛹️","🤾","🏌️","🏇","🧘","🏃","🚴","🎮","🕹️","🎲","🎯","🎰","🎳","🎸","🎹","🥁","🎺","🎷","🎤","🎧","🎬","🎨"],
-  "🚗": ["🚗","🚕","🚙","🚌","🚎","🏎️","🚓","🚑","🚒","🚐","🚚","🚛","🚜","🛴","🚲","🛵","🏍️","✈️","🚀","🛸","🚁","⛵","🚤","🛳️","🚂","🚊","🏠","🏡","🏢","🏥","🏦","🏨","🏫","⛪","🗼","🗽","🌍","🌙","☀️","⛅","🌧️","⛈️","❄️","🌈","🔥","💧","🌊"]
-};
-
-const panneauEmoji = document.getElementById("panneau-emoji");
-const btnEmoji = document.getElementById("btn-emoji");
-const ongletsEmoji = document.getElementById("onglets-emoji");
-const grilleEmoji = document.getElementById("grille-emoji");
-
-function construireSelecteurEmoji() {
-  const categories = Object.keys(EMOJIS);
-
-  categories.forEach((cat, index) => {
-    const onglet = document.createElement("button");
-    onglet.type = "button";
-    onglet.textContent = cat;
-    onglet.classList.add("onglet-emoji");
-    if (index === 0) onglet.classList.add("actif");
-
-    onglet.addEventListener("click", () => {
-      document.querySelectorAll(".onglet-emoji").forEach(o => o.classList.remove("actif"));
-      onglet.classList.add("actif");
-      afficherCategorie(cat);
-    });
-
-    ongletsEmoji.appendChild(onglet);
-  });
-
-  afficherCategorie(categories[0]);
-}
-
-function afficherCategorie(categorie) {
-  grilleEmoji.innerHTML = "";
-  EMOJIS[categorie].forEach(emoji => {
-    const bouton = document.createElement("button");
-    bouton.type = "button";
-    bouton.textContent = emoji;
-    bouton.classList.add("bouton-emoji");
-    bouton.addEventListener("click", () => insererEmoji(emoji));
-    grilleEmoji.appendChild(bouton);
-  });
-}
-
-// Insère l'emoji à la position du curseur dans le champ de texte
-function insererEmoji(emoji) {
-  const debut = messageInput.selectionStart;
-  const fin = messageInput.selectionEnd;
-  const texte = messageInput.value;
-
-  messageInput.value = texte.slice(0, debut) + emoji + texte.slice(fin);
-  messageInput.focus();
-  messageInput.selectionStart = messageInput.selectionEnd = debut + emoji.length;
-}
-
-btnEmoji.addEventListener("click", (event) => {
-  event.stopPropagation();
-  panneauEmoji.classList.toggle("cache");
-});
-
-// Ferme le panneau si on clique ailleurs
-document.addEventListener("click", (event) => {
-  if (!panneauEmoji.contains(event.target) && event.target !== btnEmoji) {
-    panneauEmoji.classList.add("cache");
+    console.error("Erreur devenir-admin :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
   }
 });
 
-construireSelecteurEmoji();
-
-// ---------- Gestion des images ----------
-
-function reinitialiserImage() {
-  fichierSelectionne = null;
-  inputFichier.value = "";
-  apercuImage.classList.add("apercu-cache");
-  apercuImg.src = "";
-}
-
-btnImage.addEventListener("click", () => inputFichier.click());
-
-inputFichier.addEventListener("change", () => {
-  const fichier = inputFichier.files[0];
-  if (!fichier) return;
-
-  if (!fichier.type.startsWith("image/")) {
-    alert("Seules les images sont autorisées.");
-    reinitialiserImage();
-    return;
+// Liste complète des utilisateurs avec leur statut
+app.get("/admin/utilisateurs", verifierAdmin, async (req, res) => {
+  try {
+    const resultat = await pool.query(
+      "SELECT pseudo, is_admin, is_banni, cree_le FROM utilisateurs ORDER BY pseudo"
+    );
+    res.json({ utilisateurs: resultat.rows });
+  } catch (err) {
+    console.error("Erreur liste admin :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
   }
-
-  if (fichier.size > 5 * 1024 * 1024) {
-    alert("Image trop lourde (5 Mo maximum).");
-    reinitialiserImage();
-    return;
-  }
-
-  fichierSelectionne = fichier;
-  apercuImg.src = URL.createObjectURL(fichier);
-  apercuImage.classList.remove("apercu-cache");
 });
 
-annulerImage.addEventListener("click", reinitialiserImage);
+// Bannir / débannir un compte
+app.post("/admin/bannir", verifierAdmin, async (req, res) => {
+  const { pseudo, bannir } = req.body;
 
-// Envoie l'image à Cloudinary via notre serveur, et récupère son URL
-async function envoyerImage(fichier) {
-  const formData = new FormData();
-  formData.append("image", fichier);
-
-  const reponse = await fetch("/upload-image", {
-    method: "POST",
-    body: formData
-  });
-
-  const data = await reponse.json();
-  if (!data.succes) {
-    throw new Error(data.erreur || "Erreur lors de l'envoi.");
+  if (pseudo === req.session.pseudo) {
+    return res.status(400).json({ erreur: "Vous ne pouvez pas vous bannir vous-même." });
   }
-  return data.url;
+
+  try {
+    // On ne peut pas bannir un autre admin
+    const cible = await pool.query(
+      "SELECT is_admin FROM utilisateurs WHERE pseudo = $1",
+      [pseudo]
+    );
+
+    if (cible.rows.length === 0) {
+      return res.status(404).json({ erreur: "Utilisateur introuvable." });
+    }
+
+    if (cible.rows[0].is_admin && bannir) {
+      return res.status(403).json({ erreur: "Impossible de bannir un administrateur." });
+    }
+
+    await pool.query(
+      "UPDATE utilisateurs SET is_banni = $1 WHERE pseudo = $2",
+      [bannir === true, pseudo]
+    );
+
+    console.log(`${req.session.pseudo} a ${bannir ? "banni" : "débanni"} ${pseudo}`);
+
+    // Déconnecte immédiatement la personne bannie si elle est en ligne
+    if (bannir === true) {
+      deconnecterUtilisateur(pseudo);
+    }
+
+    res.json({ succes: true });
+  } catch (err) {
+    console.error("Erreur bannissement :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
+});
+
+// Supprimer définitivement un compte et tout ce qui lui appartient
+app.post("/admin/supprimer-compte", verifierAdmin, async (req, res) => {
+  const { pseudo } = req.body;
+
+  if (!pseudo) {
+    return res.status(400).json({ erreur: "Pseudo manquant." });
+  }
+
+  if (pseudo === req.session.pseudo) {
+    return res.status(400).json({ erreur: "Vous ne pouvez pas supprimer votre propre compte." });
+  }
+
+  try {
+    const cible = await pool.query(
+      "SELECT is_admin FROM utilisateurs WHERE pseudo = $1",
+      [pseudo]
+    );
+
+    if (cible.rows.length === 0) {
+      return res.status(404).json({ erreur: "Utilisateur introuvable." });
+    }
+
+    if (cible.rows[0].is_admin) {
+      return res.status(403).json({ erreur: "Impossible de supprimer un administrateur." });
+    }
+
+    // Déconnecte la personne avant de tout effacer
+    deconnecterUtilisateur(pseudo);
+
+    // Supprime tout ce qui est rattaché au compte.
+    // Les commentaires et votes des publications partent en cascade.
+    await pool.query("DELETE FROM commentaires WHERE auteur = $1", [pseudo]);
+    await pool.query("DELETE FROM votes WHERE pseudo = $1", [pseudo]);
+    await pool.query("DELETE FROM publications WHERE auteur = $1", [pseudo]);
+    await pool.query("DELETE FROM messages_prives WHERE auteur = $1 OR destinataire = $1", [pseudo]);
+    await pool.query("DELETE FROM messages_publics WHERE auteur = $1", [pseudo]);
+    await pool.query("DELETE FROM utilisateurs WHERE pseudo = $1", [pseudo]);
+
+    console.log(`${req.session.pseudo} a SUPPRIMÉ le compte ${pseudo}`);
+
+    io.emit("compte_supprime", { pseudo });
+
+    res.json({ succes: true });
+  } catch (err) {
+    console.error("Erreur suppression compte :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
+});
+
+// Supprimer une publication du forum (et ses commentaires/votes en cascade)
+app.post("/admin/supprimer-publication", verifierAdmin, async (req, res) => {
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ erreur: "ID manquant." });
+
+  try {
+    await pool.query("DELETE FROM publications WHERE id = $1", [id]);
+    console.log(`${req.session.pseudo} a supprimé la publication #${id}`);
+    io.emit("publication_supprimee", { id });
+    res.json({ succes: true });
+  } catch (err) {
+    console.error("Erreur suppression publication :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
+});
+
+// Supprimer un commentaire
+app.post("/admin/supprimer-commentaire", verifierAdmin, async (req, res) => {
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ erreur: "ID manquant." });
+
+  try {
+    await pool.query("DELETE FROM commentaires WHERE id = $1", [id]);
+    console.log(`${req.session.pseudo} a supprimé le commentaire #${id}`);
+    io.emit("commentaire_supprime", { id });
+    res.json({ succes: true });
+  } catch (err) {
+    console.error("Erreur suppression commentaire :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
+});
+
+// Supprimer un message
+app.post("/admin/supprimer-message", verifierAdmin, async (req, res) => {
+  const { id, type } = req.body;
+
+  if (!id || !["public", "prive"].includes(type)) {
+    return res.status(400).json({ erreur: "Paramètres invalides." });
+  }
+
+  try {
+    const table = type === "public" ? "messages_publics" : "messages_prives";
+    await pool.query(`DELETE FROM ${table} WHERE id = $1`, [id]);
+
+    console.log(`${req.session.pseudo} a supprimé le message ${type} #${id}`);
+
+    // Prévient tous les clients pour qu'ils retirent le message affiché
+    io.emit("message_supprime", { id, type });
+
+    res.json({ succes: true });
+  } catch (err) {
+    console.error("Erreur suppression message :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
+});
+
+app.get("/utilisateurs", async (req, res) => {
+  if (!req.session.pseudo) {
+    return res.status(401).json({ erreur: "Non connecté." });
+  }
+
+  try {
+    const resultat = await pool.query(
+      "SELECT pseudo FROM utilisateurs WHERE pseudo != $1 ORDER BY pseudo",
+      [req.session.pseudo]
+    );
+    res.json({ utilisateurs: resultat.rows.map(r => r.pseudo) });
+  } catch (err) {
+    console.error("Erreur liste utilisateurs :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
+});
+
+// ---------- UPLOAD D'IMAGES ----------
+
+app.post("/upload-image", upload.single("image"), async (req, res) => {
+  if (!req.session.pseudo) {
+    return res.status(401).json({ erreur: "Non connecté." });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ erreur: "Aucune image reçue." });
+  }
+
+  try {
+    // Envoie l'image à Cloudinary depuis la mémoire
+    const resultat = await new Promise((resolve, reject) => {
+      const flux = cloudinary.uploader.upload_stream(
+        {
+          folder: "messagerie",
+          transformation: [
+            { width: 1200, height: 1200, crop: "limit" }, // réduit les très grandes images
+            { quality: "auto" }
+          ]
+        },
+        (erreur, resultat) => {
+          if (erreur) reject(erreur);
+          else resolve(resultat);
+        }
+      );
+      flux.end(req.file.buffer);
+    });
+
+    res.json({ succes: true, url: resultat.secure_url });
+  } catch (err) {
+    console.error("Erreur upload image :", err);
+    res.status(500).json({ erreur: "Impossible d'envoyer l'image." });
+  }
+});
+
+// Gestion des erreurs de multer (fichier trop lourd, mauvais type...)
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+    return res.status(400).json({ erreur: "Image trop lourde (5 Mo maximum)." });
+  }
+  if (err) {
+    return res.status(400).json({ erreur: err.message });
+  }
+  next();
+});
+
+// ---------- SOCKET.IO ----------
+
+io.engine.use(sessionMiddleware);
+
+const socketsParPseudo = {};
+
+// Déconnecte de force un utilisateur (utilisé lors d'un bannissement)
+function deconnecterUtilisateur(pseudo) {
+  const socketId = socketsParPseudo[pseudo];
+  if (socketId) {
+    const socket = io.sockets.sockets.get(socketId);
+    if (socket) {
+      socket.emit("banni");
+      socket.disconnect(true);
+    }
+  }
 }
 
-function demarrerChat() {
-  socket = io();
+io.on("connection", async (socket) => {
+  const session = socket.request.session;
 
-  retourBtn.addEventListener("click", () => {
-    appContainer.classList.remove("mobile-vue-chat");
-  });
+  if (!session || !session.pseudo) {
+    socket.disconnect();
+    return;
+  }
 
-  messageForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const texte = messageInput.value.trim();
+  const monPseudo = session.pseudo;
 
-    // Il faut au moins un texte ou une image
-    if (texte === "" && !fichierSelectionne) return;
-
-    let imageUrl = null;
-
-    // S'il y a une image, on l'envoie d'abord et on attend son URL
-    if (fichierSelectionne) {
-      btnEnvoyer.disabled = true;
-      btnEnvoyer.textContent = "Envoi...";
-
-      try {
-        imageUrl = await envoyerImage(fichierSelectionne);
-      } catch (err) {
-        alert(err.message);
-        btnEnvoyer.disabled = false;
-        btnEnvoyer.textContent = "Envoyer";
-        return;
-      }
-
-      btnEnvoyer.disabled = false;
-      btnEnvoyer.textContent = "Envoyer";
-    }
-
-    if (conversationActuelle.type === "salon") {
-      socket.emit("message_public", { texte, imageUrl, salon: conversationActuelle.id });
-    } else {
-      socket.emit("message_prive", { destinataire: conversationActuelle.id, texte, imageUrl });
-    }
-
-    messageInput.value = "";
-    reinitialiserImage();
-  });
-
-  // Liste des salons envoyée par le serveur à la connexion
-  socket.on("liste_salons", (salons) => {
-    salonsDisponibles = salons;
-    construireListeSalons();
-    ouvrirSalon("radio1");
-  });
-
-  // Historique d'un salon
-  socket.on("historique_salon", (data) => {
-    const cle = "salon:" + data.salon;
-    cacheMessages[cle] = data.messages;
-
-    if (conversationActuelle.type === "salon" && conversationActuelle.id === data.salon) {
-      afficherMessages(data.messages);
-    }
-  });
-
-  // Nouveau message dans un salon
-  socket.on("message_public", (message) => {
-    const salon = message.salon || "radio1";
-    const cle = "salon:" + salon;
-
-    if (!cacheMessages[cle]) cacheMessages[cle] = [];
-    cacheMessages[cle].push(message);
-
-    if (conversationActuelle.type === "salon" && conversationActuelle.id === salon) {
-      ajouterMessageAffiche(message);
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    }
-  });
-
-  // Erreur d'envoi (ex : salon réservé aux admins)
-  socket.on("erreur_envoi", (data) => {
-    alert(data.message);
-    pubErreur.textContent = data.message;
-  });
-
-  // ----- Événements du forum -----
-
-  socket.on("liste_publications", (data) => {
-    if (conversationActuelle.type === "salon" && conversationActuelle.id === data.salon) {
-      afficherPublications(data.publications);
-    }
-  });
-
-  socket.on("nouvelle_publication", (data) => {
-    if (conversationActuelle.type === "salon" && conversationActuelle.id === data.salon) {
-      publicationsCache.unshift(data.publication);
-
-      const vide = listePublications.querySelector(".info-vide");
-      if (vide) listePublications.innerHTML = "";
-
-      listePublications.prepend(creerCartePublication(data.publication));
-    }
-  });
-
-  socket.on("score_maj", (data) => {
-    const pub = publicationsCache.find(p => p.id === data.publicationId);
-    if (pub) pub.score = data.score;
-
-    const carte = listePublications.querySelector(`[data-pub-id="${data.publicationId}"]`);
-    if (carte) {
-      const scoreEl = carte.querySelector(".score");
-      if (scoreEl) scoreEl.textContent = data.score;
-    }
-  });
-
-  socket.on("liste_commentaires", (data) => {
-    if (publicationOuverte === data.publicationId) {
-      afficherCommentaires(data.commentaires);
-    }
-  });
-
-  socket.on("nouveau_commentaire", (data) => {
-    // Met à jour le compteur sur la carte
-    const pub = publicationsCache.find(p => p.id === data.publicationId);
-    if (pub) {
-      pub.nb_commentaires = (pub.nb_commentaires || 0) + 1;
-      const carte = listePublications.querySelector(`[data-pub-id="${data.publicationId}"]`);
-      if (carte) {
-        const meta = carte.querySelector(".pub-meta");
-        if (meta) meta.textContent = `par ${pub.auteur} · 💬 ${pub.nb_commentaires}`;
-      }
-    }
-
-    // Ajoute le commentaire si la publication est ouverte
-    if (publicationOuverte === data.publicationId) {
-      const vide = detailCommentaires.querySelector(".info-vide");
-      if (vide) detailCommentaires.innerHTML = "";
-      detailCommentaires.appendChild(creerCommentaire(data.commentaire));
-    }
-  });
-
-  socket.on("publication_supprimee", (data) => {
-    publicationsCache = publicationsCache.filter(p => p.id !== data.id);
-    const carte = listePublications.querySelector(`[data-pub-id="${data.id}"]`);
-    if (carte) carte.remove();
-
-    if (publicationOuverte === data.id) {
-      modalDetail.classList.add("cache");
-      publicationOuverte = null;
-    }
-  });
-
-  socket.on("commentaire_supprime", (data) => {
-    const el = detailCommentaires.querySelector(`[data-commentaire-id="${data.id}"]`);
-    if (el) el.remove();
-  });
-
-  // ----- Interactions du forum -----
-
-  btnNouvellePub.addEventListener("click", () => {
-    pubTitre.value = "";
-    pubContenu.value = "";
-    pubErreur.textContent = "";
-    reinitialiserImagePub();
-    modalPublication.classList.remove("cache");
-    pubTitre.focus();
-  });
-
-  pubFermer.addEventListener("click", () => modalPublication.classList.add("cache"));
-  detailFermer.addEventListener("click", () => {
-    modalDetail.classList.add("cache");
-    publicationOuverte = null;
-  });
-
-  pubBtnImage.addEventListener("click", () => pubImage.click());
-  pubAnnulerImage.addEventListener("click", reinitialiserImagePub);
-
-  pubImage.addEventListener("change", () => {
-    const fichier = pubImage.files[0];
-    if (!fichier) return;
-
-    if (fichier.size > 5 * 1024 * 1024) {
-      alert("Image trop lourde (5 Mo maximum).");
-      reinitialiserImagePub();
+  // Vérifie que le compte n'est pas banni
+  try {
+    const verif = await pool.query(
+      "SELECT is_banni FROM utilisateurs WHERE pseudo = $1",
+      [monPseudo]
+    );
+    if (verif.rows.length === 0 || verif.rows[0].is_banni) {
+      socket.emit("banni");
+      socket.disconnect(true);
       return;
     }
+  } catch (err) {
+    console.error("Erreur vérification bannissement :", err);
+    socket.disconnect(true);
+    return;
+  }
 
-    pubFichierSelectionne = fichier;
-    pubApercuImg.src = URL.createObjectURL(fichier);
-    pubApercu.classList.remove("cache");
+  socketsParPseudo[monPseudo] = socket.id;
+  console.log(`${monPseudo} s'est connecté`);
+
+  // Envoie la liste des salons disponibles au client
+  socket.emit("liste_salons", SALONS);
+
+  // Historique d'un salon donné, à la demande
+  socket.on("demander_historique_salon", async (data) => {
+    const salon = data.salon;
+    if (!SALONS[salon]) return;
+
+    try {
+      const resultat = await pool.query(
+        "SELECT id, auteur, texte, image_url, date FROM messages_publics WHERE salon = $1 ORDER BY id DESC LIMIT 100",
+        [salon]
+      );
+      socket.emit("historique_salon", {
+        salon,
+        messages: resultat.rows.reverse()
+      });
+    } catch (err) {
+      console.error("Erreur historique salon :", err);
+    }
   });
 
-  pubPublier.addEventListener("click", async () => {
-    const titre = pubTitre.value.trim();
+  // --- Salon public "Radio 1" ---
+  socket.on("message_public", async (data) => {
+    const texte = (data.texte || "").trim();
+    const imageUrl = data.imageUrl || null;
+    const salon = data.salon || "radio1";
+
+    // Salon inexistant
+    if (!SALONS[salon]) return;
+
+    // Il faut au moins un texte OU une image
+    if (!texte && !imageUrl) return;
+
+    // Vérifie les droits d'écriture pour les salons réservés aux admins
+    if (SALONS[salon].adminSeul) {
+      const autorise = await estAdmin(monPseudo);
+      if (!autorise) {
+        socket.emit("erreur_envoi", {
+          message: "Seuls les administrateurs peuvent écrire dans ce salon."
+        });
+        return;
+      }
+    }
+
+    try {
+      const resultat = await pool.query(
+        "INSERT INTO messages_publics (auteur, texte, image_url, salon) VALUES ($1, $2, $3, $4) RETURNING id, auteur, texte, image_url, date, salon",
+        [monPseudo, texte || null, imageUrl, salon]
+      );
+      io.emit("message_public", resultat.rows[0]);
+    } catch (err) {
+      console.error("Erreur message public :", err);
+    }
+  });
+
+  // --- Messages privés ---
+  socket.on("demander_historique_prive", async (data) => {
+    try {
+      const conversationId = idConversation(monPseudo, data.destinataire);
+      const resultat = await pool.query(
+        "SELECT id, auteur, texte, image_url, date FROM messages_prives WHERE conversation_id = $1 ORDER BY id ASC LIMIT 200",
+        [conversationId]
+      );
+      socket.emit("historique_prive", {
+        avec: data.destinataire,
+        messages: resultat.rows
+      });
+    } catch (err) {
+      console.error("Erreur historique privé :", err);
+    }
+  });
+
+  socket.on("message_prive", async (data) => {
+    const texte = (data.texte || "").trim();
+    const imageUrl = data.imageUrl || null;
+
+    if ((!texte && !imageUrl) || !data.destinataire) return;
+
+    try {
+      const conversationId = idConversation(monPseudo, data.destinataire);
+
+      const resultat = await pool.query(
+        `INSERT INTO messages_prives (conversation_id, auteur, destinataire, texte, image_url)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id, auteur, texte, image_url, date`,
+        [conversationId, monPseudo, data.destinataire, texte || null, imageUrl]
+      );
+
+      const message = resultat.rows[0];
+
+      // Envoie au destinataire s'il est connecté
+      const socketDestinataire = socketsParPseudo[data.destinataire];
+      if (socketDestinataire) {
+        io.to(socketDestinataire).emit("message_prive", {
+          avec: monPseudo,
+          message
+        });
+      }
+
+      // Renvoie à l'expéditeur
+      socket.emit("message_prive", {
+        avec: data.destinataire,
+        message
+      });
+    } catch (err) {
+      console.error("Erreur message privé :", err);
+    }
+  });
+
+  // ---------- FORUM (Radio 2) ----------
+
+  // Charge la liste des publications avec leur score et nombre de commentaires
+  socket.on("demander_publications", async (data) => {
+    const salon = data.salon || "radio2";
+
+    try {
+      const resultat = await pool.query(`
+        SELECT
+          p.id, p.auteur, p.titre, p.contenu, p.image_url, p.date,
+          COALESCE(SUM(v.valeur), 0)::int AS score,
+          COALESCE(MAX(CASE WHEN v.pseudo = $2 THEN v.valeur END), 0)::int AS mon_vote,
+          (SELECT COUNT(*) FROM commentaires c WHERE c.publication_id = p.id)::int AS nb_commentaires
+        FROM publications p
+        LEFT JOIN votes v ON v.publication_id = p.id
+        WHERE p.salon = $1
+        GROUP BY p.id
+        ORDER BY p.id DESC
+        LIMIT 50
+      `, [salon, monPseudo]);
+
+      socket.emit("liste_publications", { salon, publications: resultat.rows });
+    } catch (err) {
+      console.error("Erreur liste publications :", err);
+    }
+  });
+
+  // Créer une nouvelle publication
+  socket.on("creer_publication", async (data) => {
+    const titre = (data.titre || "").trim();
+    const contenu = (data.contenu || "").trim();
+    const imageUrl = data.imageUrl || null;
+    const salon = data.salon || "radio2";
+
     if (!titre) {
-      pubErreur.textContent = "Le titre est obligatoire.";
+      socket.emit("erreur_envoi", { message: "Le titre est obligatoire." });
       return;
     }
 
-    let imageUrl = null;
-    pubPublier.disabled = true;
-    pubPublier.textContent = "Publication...";
+    if (titre.length > 200) {
+      socket.emit("erreur_envoi", { message: "Titre trop long (200 caractères maximum)." });
+      return;
+    }
 
-    if (pubFichierSelectionne) {
-      try {
-        imageUrl = await envoyerImage(pubFichierSelectionne);
-      } catch (err) {
-        pubErreur.textContent = err.message;
-        pubPublier.disabled = false;
-        pubPublier.textContent = "Publier";
-        return;
+    try {
+      const resultat = await pool.query(
+        `INSERT INTO publications (salon, auteur, titre, contenu, image_url)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, auteur, titre, contenu, image_url, date`,
+        [salon, monPseudo, titre, contenu || null, imageUrl]
+      );
+
+      const publication = resultat.rows[0];
+      publication.score = 0;
+      publication.mon_vote = 0;
+      publication.nb_commentaires = 0;
+
+      io.emit("nouvelle_publication", { salon, publication });
+    } catch (err) {
+      console.error("Erreur création publication :", err);
+    }
+  });
+
+  // Voter (1 = up, -1 = down, 0 = annuler)
+  socket.on("voter", async (data) => {
+    const publicationId = parseInt(data.publicationId, 10);
+    const valeur = parseInt(data.valeur, 10);
+
+    if (![1, -1, 0].includes(valeur) || !publicationId) return;
+
+    try {
+      if (valeur === 0) {
+        await pool.query(
+          "DELETE FROM votes WHERE publication_id = $1 AND pseudo = $2",
+          [publicationId, monPseudo]
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO votes (publication_id, pseudo, valeur)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (publication_id, pseudo)
+           DO UPDATE SET valeur = EXCLUDED.valeur`,
+          [publicationId, monPseudo, valeur]
+        );
       }
-    }
 
-    socket.emit("creer_publication", {
-      salon: conversationActuelle.id,
-      titre,
-      contenu: pubContenu.value.trim(),
-      imageUrl
-    });
+      const scoreResultat = await pool.query(
+        "SELECT COALESCE(SUM(valeur), 0)::int AS score FROM votes WHERE publication_id = $1",
+        [publicationId]
+      );
 
-    pubPublier.disabled = false;
-    pubPublier.textContent = "Publier";
-    modalPublication.classList.add("cache");
-  });
-
-  envoyerCommentaire.addEventListener("click", () => {
-    const texte = inputCommentaire.value.trim();
-    if (!texte || !publicationOuverte) return;
-
-    socket.emit("ajouter_commentaire", {
-      publicationId: publicationOuverte,
-      texte
-    });
-
-    inputCommentaire.value = "";
-  });
-
-  inputCommentaire.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") envoyerCommentaire.click();
-  });
-
-  // Historique reçu pour une conversation privée
-  socket.on("historique_prive", (data) => {
-    const cle = "prive:" + data.avec;
-    cacheMessages[cle] = data.messages;
-
-    if (conversationActuelle.type === "prive" && conversationActuelle.id === data.avec) {
-      afficherMessages(data.messages);
+      io.emit("score_maj", {
+        publicationId,
+        score: scoreResultat.rows[0].score
+      });
+    } catch (err) {
+      console.error("Erreur vote :", err);
     }
   });
 
-  // Un message a été supprimé par un admin
-  socket.on("message_supprime", (data) => {
-    const el = messagesDiv.querySelector(`[data-message-id="${data.id}"]`);
-    if (el) el.remove();
+  // Charger les commentaires d'une publication
+  socket.on("demander_commentaires", async (data) => {
+    const publicationId = parseInt(data.publicationId, 10);
+    if (!publicationId) return;
 
-    // Retire aussi du cache
-    Object.keys(cacheMessages).forEach(cle => {
-      cacheMessages[cle] = cacheMessages[cle].filter(m => m.id !== data.id);
-    });
-  });
-
-  // On vient d'être banni
-  socket.on("banni", () => {
-    alert("Votre compte a été banni.");
-    window.location.href = "/connexion.html";
-  });
-
-  // Nouveau message privé reçu
-  socket.on("message_prive", (data) => {
-    const cle = "prive:" + data.avec;
-    if (!cacheMessages[cle]) cacheMessages[cle] = [];
-    cacheMessages[cle].push(data.message);
-
-    if (conversationActuelle.type === "prive" && conversationActuelle.id === data.avec) {
-      ajouterMessageAffiche(data.message);
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    try {
+      const resultat = await pool.query(
+        "SELECT id, auteur, texte, date FROM commentaires WHERE publication_id = $1 ORDER BY id ASC",
+        [publicationId]
+      );
+      socket.emit("liste_commentaires", { publicationId, commentaires: resultat.rows });
+    } catch (err) {
+      console.error("Erreur commentaires :", err);
     }
   });
-}
 
-deconnexionBtn.addEventListener("click", async () => {
-  await fetch("/deconnexion", { method: "POST" });
-  window.location.href = "/connexion.html";
+  // Ajouter un commentaire
+  socket.on("ajouter_commentaire", async (data) => {
+    const publicationId = parseInt(data.publicationId, 10);
+    const texte = (data.texte || "").trim();
+
+    if (!publicationId || !texte) return;
+
+    try {
+      const resultat = await pool.query(
+        `INSERT INTO commentaires (publication_id, auteur, texte)
+         VALUES ($1, $2, $3) RETURNING id, auteur, texte, date`,
+        [publicationId, monPseudo, texte]
+      );
+
+      io.emit("nouveau_commentaire", {
+        publicationId,
+        commentaire: resultat.rows[0]
+      });
+    } catch (err) {
+      console.error("Erreur ajout commentaire :", err);
+    }
+  });
+
+  socket.on("disconnect", () => {
+    console.log(`${monPseudo} s'est déconnecté`);
+    delete socketsParPseudo[monPseudo];
+  });
 });
 
-verifierConnexion();
+// ---------- DÉMARRAGE ----------
+
+const PORT = process.env.PORT || 3000;
+
+initialiserBase()
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`Serveur lancé sur http://localhost:${PORT}`);
+    });
+  })
+  .catch(err => {
+    console.error("Impossible d'initialiser la base de données :", err);
+    process.exit(1);
+  });

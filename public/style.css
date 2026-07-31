@@ -1134,3 +1134,38 @@ button.danger {
 #panneau-emoji {
   z-index: 10;
 }
+
+/* ---------- Actions du panneau de modération ---------- */
+
+.actions-admin {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+button.danger-fort {
+  background-color: transparent !important;
+  color: var(--danger) !important;
+  border: 1px solid var(--danger) !important;
+}
+
+button.danger-fort:hover {
+  background-color: var(--danger) !important;
+  color: white !important;
+}
+
+@media (max-width: 480px) {
+  .ligne-admin {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .actions-admin {
+    width: 100%;
+  }
+
+  .actions-admin button {
+    flex: 1;
+  }
+}
