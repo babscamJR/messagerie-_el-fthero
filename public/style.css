@@ -1448,3 +1448,9 @@ body {
     max-height: 110px;
   }
 }
+
+/* Les retours à la ligne saisis sont conservés à l'affichage */
+.message > div {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

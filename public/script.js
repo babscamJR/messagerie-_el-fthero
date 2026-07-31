@@ -439,13 +439,8 @@ function ajusterHauteurSaisie() {
 
 messageInput.addEventListener("input", ajusterHauteurSaisie);
 
-// Entrée envoie le message, Maj+Entrée passe à la ligne
-messageInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && !event.shiftKey) {
-    event.preventDefault();
-    messageForm.requestSubmit();
-  }
-});
+// Entrée passe simplement à la ligne : l'envoi se fait uniquement
+// via le bouton "Envoyer" (comportement natif du textarea, rien à intercepter)
 
 // ---------- GROUPES ----------
 
