@@ -25,7 +25,8 @@ async function initialiserBase() {
     CREATE TABLE IF NOT EXISTS messages_publics (
       id SERIAL PRIMARY KEY,
       auteur VARCHAR(50) NOT NULL,
-      texte TEXT NOT NULL,
+      texte TEXT,
+      image_url TEXT,
       date TIMESTAMP DEFAULT NOW()
     );
   `);
@@ -36,10 +37,21 @@ async function initialiserBase() {
       conversation_id VARCHAR(120) NOT NULL,
       auteur VARCHAR(50) NOT NULL,
       destinataire VARCHAR(50) NOT NULL,
-      texte TEXT NOT NULL,
+      texte TEXT,
+      image_url TEXT,
       date TIMESTAMP DEFAULT NOW()
     );
   `);
+
+  // Colonnes de modération sur les comptes
+  await pool.query(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;`);
+  await pool.query(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS is_banni BOOLEAN DEFAULT FALSE;`);
+
+  // Ajoute les colonnes image si les tables existaient déjà sans elles
+  await pool.query(`ALTER TABLE messages_publics ADD COLUMN IF NOT EXISTS image_url TEXT;`);
+  await pool.query(`ALTER TABLE messages_prives ADD COLUMN IF NOT EXISTS image_url TEXT;`);
+  await pool.query(`ALTER TABLE messages_publics ALTER COLUMN texte DROP NOT NULL;`);
+  await pool.query(`ALTER TABLE messages_prives ALTER COLUMN texte DROP NOT NULL;`);
 
   // Index pour accélérer la recherche des conversations privées
   await pool.query(`
