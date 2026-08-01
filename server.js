@@ -36,6 +36,53 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// ---------- Limites anti-spam ----------
+
+const LIMITES = {
+  messagesParFenetre: 10,          // messages autorisés...
+  fenetreMessages: 10000,          // ...sur 10 secondes
+  longueurMessage: 1500,           // caractères max pour un message
+  longueurPublication: 3000,       // caractères max pour une histoire (Radio 2)
+  longueurTitre: 200,
+  imagesParFenetre: 3,             // images autorisées...
+  fenetreImages: 30 * 60 * 1000    // ...sur 30 minutes
+};
+
+// Historique en mémoire : { pseudo: [horodatages] }
+const historiqueMessages = {};
+const historiqueImages = {};
+
+// Retire les entrées trop anciennes et indique s'il reste du quota
+function verifierQuota(historique, pseudo, limite, fenetre) {
+  const maintenant = Date.now();
+
+  if (!historique[pseudo]) historique[pseudo] = [];
+  historique[pseudo] = historique[pseudo].filter(t => maintenant - t < fenetre);
+
+  if (historique[pseudo].length >= limite) {
+    const plusAncien = historique[pseudo][0];
+    return {
+      autorise: false,
+      attendre: Math.ceil((fenetre - (maintenant - plusAncien)) / 1000)
+    };
+  }
+
+  historique[pseudo].push(maintenant);
+  return { autorise: true };
+}
+
+// Nettoyage périodique pour éviter que la mémoire enfle
+setInterval(() => {
+  const maintenant = Date.now();
+  [historiqueMessages, historiqueImages].forEach(h => {
+    Object.keys(h).forEach(pseudo => {
+      if (h[pseudo].every(t => maintenant - t > LIMITES.fenetreImages)) {
+        delete h[pseudo];
+      }
+    });
+  });
+}, 15 * 60 * 1000);
+
 // Salons publics disponibles
 // adminSeul: true => seuls les administrateurs peuvent y écrire
 const SALONS = {
@@ -554,6 +601,26 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
     return res.status(400).json({ erreur: "Aucune image reçue." });
   }
 
+  // Les administrateurs ne sont pas limités
+  const admin = await estAdmin(req.session.pseudo);
+
+  if (!admin) {
+    const quota = verifierQuota(
+      historiqueImages,
+      req.session.pseudo,
+      LIMITES.imagesParFenetre,
+      LIMITES.fenetreImages
+    );
+
+    if (!quota.autorise) {
+      return res.status(429).json({
+        erreur: "Limite d'images atteinte.",
+        limiteImages: true,
+        secondes: quota.attendre
+      });
+    }
+  }
+
   try {
     // Envoie l'image à Cloudinary depuis la mémoire
     const resultat = await new Promise((resolve, reject) => {
@@ -679,10 +746,31 @@ io.on("connection", async (socket) => {
     // Il faut au moins un texte OU une image
     if (!texte && !imageUrl) return;
 
+    const admin = await estAdmin(monPseudo);
+
+    if (texte.length > LIMITES.longueurMessage) {
+      socket.emit("limite_atteinte", {
+        type: "longueur",
+        message: `Message trop long : ${texte.length} caractères sur ${LIMITES.longueurMessage} autorisés.`
+      });
+      return;
+    }
+
+    if (!admin) {
+      const quota = verifierQuota(historiqueMessages, monPseudo, LIMITES.messagesParFenetre, LIMITES.fenetreMessages);
+      if (!quota.autorise) {
+        socket.emit("limite_atteinte", {
+          type: "frequence",
+          secondes: quota.attendre,
+          message: `Tu envoies des messages trop rapidement. Patiente ${quota.attendre} seconde(s).`
+        });
+        return;
+      }
+    }
+
     // Vérifie les droits d'écriture pour les salons réservés aux admins
     if (SALONS[salon].adminSeul) {
-      const autorise = await estAdmin(monPseudo);
-      if (!autorise) {
+      if (!admin) {
         socket.emit("erreur_envoi", {
           message: "Seuls les administrateurs peuvent écrire dans ce salon."
         });
@@ -724,6 +812,8 @@ io.on("connection", async (socket) => {
 
     if ((!texte && !imageUrl) || !data.destinataire) return;
 
+    if (!(await messageAutorise(texte))) return;
+
     try {
       const conversationId = idConversation(monPseudo, data.destinataire);
 
@@ -753,6 +843,31 @@ io.on("connection", async (socket) => {
       console.error("Erreur message privé :", err);
     }
   });
+
+  // Vérifie longueur et fréquence pour un message ; renvoie true si tout va bien
+  async function messageAutorise(texte) {
+    if (texte.length > LIMITES.longueurMessage) {
+      socket.emit("limite_atteinte", {
+        type: "longueur",
+        message: `Message trop long : ${texte.length} caractères sur ${LIMITES.longueurMessage} autorisés.`
+      });
+      return false;
+    }
+
+    if (await estAdmin(monPseudo)) return true;
+
+    const quota = verifierQuota(historiqueMessages, monPseudo, LIMITES.messagesParFenetre, LIMITES.fenetreMessages);
+    if (!quota.autorise) {
+      socket.emit("limite_atteinte", {
+        type: "frequence",
+        secondes: quota.attendre,
+        message: `Tu envoies des messages trop rapidement. Patiente ${quota.attendre} seconde(s).`
+      });
+      return false;
+    }
+
+    return true;
+  }
 
   // ---------- GROUPES ----------
 
@@ -954,6 +1069,8 @@ io.on("connection", async (socket) => {
 
     if (!groupeId || (!texte && !imageUrl)) return;
 
+    if (!(await messageAutorise(texte))) return;
+
     try {
       if (!(await estMembre(groupeId, monPseudo))) {
         socket.emit("erreur_envoi", { message: "Ce groupe n'est pas encore validé." });
@@ -1049,8 +1166,15 @@ io.on("connection", async (socket) => {
       return;
     }
 
-    if (titre.length > 200) {
-      socket.emit("erreur_envoi", { message: "Titre trop long (200 caractères maximum)." });
+    if (titre.length > LIMITES.longueurTitre) {
+      socket.emit("erreur_envoi", { message: `Titre trop long (${LIMITES.longueurTitre} caractères maximum).` });
+      return;
+    }
+
+    if (contenu.length > LIMITES.longueurPublication) {
+      socket.emit("erreur_envoi", {
+        message: `Histoire trop longue : ${contenu.length} caractères sur ${LIMITES.longueurPublication} autorisés.`
+      });
       return;
     }
 
@@ -1132,6 +1256,8 @@ io.on("connection", async (socket) => {
     const texte = (data.texte || "").trim();
 
     if (!publicationId || !texte) return;
+
+    if (!(await messageAutorise(texte))) return;
 
     try {
       const resultat = await pool.query(

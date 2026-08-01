@@ -1417,6 +1417,56 @@ button.danger-fort:hover {
   display: none !important;
 }
 
+
+/* ---------- Limites anti-spam ---------- */
+
+#compteur-caracteres {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: right;
+  padding: 3px 6px 0;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+#compteur-caracteres.cache {
+  display: none !important;
+}
+
+#compteur-caracteres.depasse {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.erreur-modal.depasse {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+#limite-compte-rebours {
+  background: var(--bg-page);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 14px;
+  text-align: center;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--danger);
+  letter-spacing: 1px;
+}
+
+#limite-compte-rebours.cache {
+  display: none !important;
+}
+
+#limite-compte-rebours.pret {
+  color: var(--accent);
+  border-color: var(--accent);
+  font-size: 17px;
+}
+
 /* ==========================================================
    CORRECTIF AFFICHAGE — à garder en dernier dans le fichier
    ========================================================== */

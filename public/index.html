@@ -95,6 +95,8 @@
           <textarea id="message-input" placeholder="Écris un message..." rows="1" autocomplete="off"></textarea>
           <button type="submit" id="btn-envoyer">Envoyer</button>
         </form>
+
+        <div id="compteur-caracteres" class="cache"></div>
       </div>
     </div>
 
@@ -213,6 +215,18 @@
       <div class="modal-actions">
         <button id="mdp-genere-copier">Copier</button>
         <button id="mdp-genere-fermer" class="secondaire">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fenêtre : limite atteinte -->
+  <div id="modal-limite" class="modal cache">
+    <div class="modal-contenu">
+      <h2 id="limite-titre">⏳ Doucement</h2>
+      <p id="limite-message" class="note-modal"></p>
+      <div id="limite-compte-rebours" class="cache"></div>
+      <div class="modal-actions">
+        <button id="limite-fermer">Compris</button>
       </div>
     </div>
   </div>

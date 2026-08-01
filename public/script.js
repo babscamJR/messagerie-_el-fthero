@@ -72,6 +72,19 @@ const menuBannir = document.getElementById("menu-bannir");
 const menuSupprimer = document.getElementById("menu-supprimer");
 const menuMotDePasse = document.getElementById("menu-motdepasse");
 
+// Limites (doivent correspondre à celles du serveur)
+const LIMITE_MESSAGE = 1500;
+const LIMITE_PUBLICATION = 3000;
+
+const compteurCaracteres = document.getElementById("compteur-caracteres");
+const modalLimite = document.getElementById("modal-limite");
+const limiteTitre = document.getElementById("limite-titre");
+const limiteMessage = document.getElementById("limite-message");
+const limiteCompteRebours = document.getElementById("limite-compte-rebours");
+const limiteFermer = document.getElementById("limite-fermer");
+
+let minuteurRebours = null;
+
 // Gestion des mots de passe
 const btnMonMdp = document.getElementById("btn-mon-mdp");
 const modalMonMdp = document.getElementById("modal-mon-mdp");
@@ -619,6 +632,66 @@ function reinitialiserImagePub() {
   pubApercuImg.src = "";
 }
 
+// ---------- Limites anti-spam ----------
+
+function afficherLimite(titre, message, secondes) {
+  clearInterval(minuteurRebours);
+
+  limiteTitre.textContent = titre;
+  limiteMessage.textContent = message;
+
+  if (secondes && secondes > 0) {
+    limiteCompteRebours.classList.remove("cache");
+    let restant = secondes;
+
+    const majRebours = () => {
+      if (restant <= 0) {
+        clearInterval(minuteurRebours);
+        limiteCompteRebours.textContent = "Tu peux réessayer";
+        limiteCompteRebours.classList.add("pret");
+        return;
+      }
+
+      const minutes = Math.floor(restant / 60);
+      const sec = restant % 60;
+      limiteCompteRebours.textContent = minutes > 0
+        ? `${minutes} min ${String(sec).padStart(2, "0")} s`
+        : `${sec} s`;
+      restant--;
+    };
+
+    limiteCompteRebours.classList.remove("pret");
+    majRebours();
+    minuteurRebours = setInterval(majRebours, 1000);
+  } else {
+    limiteCompteRebours.classList.add("cache");
+  }
+
+  modalLimite.classList.remove("cache");
+}
+
+limiteFermer.addEventListener("click", () => {
+  modalLimite.classList.add("cache");
+  clearInterval(minuteurRebours);
+});
+
+// Compteur de caractères, visible seulement quand on approche de la limite
+function majCompteurCaracteres() {
+  const longueur = messageInput.value.length;
+  const restant = LIMITE_MESSAGE - longueur;
+
+  if (restant > 200) {
+    compteurCaracteres.classList.add("cache");
+    return;
+  }
+
+  compteurCaracteres.classList.remove("cache");
+  compteurCaracteres.textContent = `${longueur} / ${LIMITE_MESSAGE}`;
+  compteurCaracteres.classList.toggle("depasse", restant < 0);
+
+  btnEnvoyer.disabled = restant < 0;
+}
+
 // ---------- Gestion des mots de passe ----------
 
 function ouvrirChangementMdp(force) {
@@ -849,6 +922,7 @@ function ajusterHauteurSaisie() {
 messageInput.addEventListener("input", () => {
   ajusterHauteurSaisie();
   signalerFrappe();
+  majCompteurCaracteres();
 });
 
 // Entrée passe simplement à la ligne : l'envoi se fait uniquement
@@ -1556,9 +1630,20 @@ async function envoyerImage(fichier) {
   });
 
   const data = await reponse.json();
+
   if (!data.succes) {
+    // Quota d'images épuisé : on affiche le compte à rebours
+    if (data.limiteImages) {
+      afficherLimite(
+        "🖼️ Limite d'images atteinte",
+        "Tu peux envoyer 3 images par tranche de 30 minutes. Prochaine image possible dans :",
+        data.secondes
+      );
+      throw new Error("__limite_images__");
+    }
     throw new Error(data.erreur || "Erreur lors de l'envoi.");
   }
+
   return data.url;
 }
 
@@ -1586,7 +1671,7 @@ function demarrerChat() {
       try {
         imageUrl = await envoyerImage(fichierSelectionne);
       } catch (err) {
-        alert(err.message);
+        if (err.message !== "__limite_images__") alert(err.message);
         btnEnvoyer.disabled = false;
         btnEnvoyer.textContent = "Envoyer";
         return;
@@ -1606,6 +1691,7 @@ function demarrerChat() {
 
     messageInput.value = "";
     ajusterHauteurSaisie();
+    majCompteurCaracteres();
     arreterFrappe();
     reinitialiserImage();
   });
@@ -1648,6 +1734,15 @@ function demarrerChat() {
   socket.on("erreur_envoi", (data) => {
     alert(data.message);
     pubErreur.textContent = data.message;
+  });
+
+  // Limite atteinte, signalée par le serveur
+  socket.on("limite_atteinte", (data) => {
+    if (data.type === "longueur") {
+      afficherLimite("✂️ Message trop long", data.message, 0);
+    } else {
+      afficherLimite("⏳ Doucement", data.message, data.secondes);
+    }
   });
 
   // ----- Présence et frappe -----
@@ -1903,10 +1998,28 @@ function demarrerChat() {
     pubApercu.classList.remove("cache");
   });
 
+  pubContenu.addEventListener("input", () => {
+    const longueur = pubContenu.value.length;
+    if (longueur > LIMITE_PUBLICATION - 300) {
+      pubErreur.textContent = longueur > LIMITE_PUBLICATION
+        ? `Trop long : ${longueur} / ${LIMITE_PUBLICATION} caractères`
+        : `${longueur} / ${LIMITE_PUBLICATION} caractères`;
+      pubErreur.classList.toggle("depasse", longueur > LIMITE_PUBLICATION);
+    } else {
+      pubErreur.textContent = "";
+      pubErreur.classList.remove("depasse");
+    }
+  });
+
   pubPublier.addEventListener("click", async () => {
     const titre = pubTitre.value.trim();
     if (!titre) {
       pubErreur.textContent = "Le titre est obligatoire.";
+      return;
+    }
+
+    if (pubContenu.value.length > LIMITE_PUBLICATION) {
+      pubErreur.textContent = `Histoire trop longue : ${pubContenu.value.length} / ${LIMITE_PUBLICATION} caractères.`;
       return;
     }
 
@@ -1918,7 +2031,7 @@ function demarrerChat() {
       try {
         imageUrl = await envoyerImage(pubFichierSelectionne);
       } catch (err) {
-        pubErreur.textContent = err.message;
+        if (err.message !== "__limite_images__") pubErreur.textContent = err.message;
         pubPublier.disabled = false;
         pubPublier.textContent = "Publier";
         return;
