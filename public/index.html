@@ -22,6 +22,7 @@
           <span>Messagerie</span>
         </h1>
         <button id="admin-btn" class="cache">🛡️ Modération</button>
+        <button id="btn-mon-mdp" title="Changer mon mot de passe">🔑 Mot de passe</button>
         <button id="deconnexion-btn" title="Se déconnecter">Déconnexion</button>
       </div>
 
@@ -177,8 +178,43 @@
   <div id="menu-utilisateur" class="menu-contextuel cache">
     <div class="menu-entete" id="menu-pseudo"></div>
     <button id="menu-message">💬 Envoyer un message</button>
+    <button id="menu-motdepasse">🔑 Réinitialiser le mot de passe</button>
     <button id="menu-bannir">🚫 Bannir</button>
     <button id="menu-supprimer" class="danger-texte">🗑 Supprimer le compte</button>
+  </div>
+
+  <!-- Fenêtre : changer son mot de passe -->
+  <div id="modal-mon-mdp" class="modal cache">
+    <div class="modal-contenu">
+      <h2 id="titre-mon-mdp">🔑 Changer mon mot de passe</h2>
+      <p id="note-mdp-temporaire" class="note-modal cache">
+        Ton mot de passe a été réinitialisé par un modérateur. Choisis-en un nouveau pour continuer.
+      </p>
+      <input type="password" id="mdp-actuel" placeholder="Mot de passe actuel">
+      <input type="password" id="mdp-nouveau" placeholder="Nouveau mot de passe" minlength="4">
+      <input type="password" id="mdp-confirmation" placeholder="Confirme le nouveau mot de passe">
+      <p id="mdp-erreur" class="erreur-modal"></p>
+      <div class="modal-actions">
+        <button id="mdp-valider">Changer</button>
+        <button id="mdp-fermer" class="secondaire">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fenêtre : mot de passe temporaire généré -->
+  <div id="modal-mdp-genere" class="modal cache">
+    <div class="modal-contenu">
+      <h2>🔑 Mot de passe réinitialisé</h2>
+      <p class="note-modal">
+        Transmets ce mot de passe temporaire à <strong id="mdp-genere-pseudo"></strong>.
+        Il ne sera plus affiché après la fermeture de cette fenêtre.
+      </p>
+      <div id="mdp-genere-valeur"></div>
+      <div class="modal-actions">
+        <button id="mdp-genere-copier">Copier</button>
+        <button id="mdp-genere-fermer" class="secondaire">Fermer</button>
+      </div>
+    </div>
   </div>
 
   <div id="modal-cle" class="modal cache">

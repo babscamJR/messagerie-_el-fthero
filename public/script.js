@@ -70,6 +70,23 @@ const menuPseudo = document.getElementById("menu-pseudo");
 const menuMessage = document.getElementById("menu-message");
 const menuBannir = document.getElementById("menu-bannir");
 const menuSupprimer = document.getElementById("menu-supprimer");
+const menuMotDePasse = document.getElementById("menu-motdepasse");
+
+// Gestion des mots de passe
+const btnMonMdp = document.getElementById("btn-mon-mdp");
+const modalMonMdp = document.getElementById("modal-mon-mdp");
+const noteMdpTemporaire = document.getElementById("note-mdp-temporaire");
+const mdpActuel = document.getElementById("mdp-actuel");
+const mdpNouveau = document.getElementById("mdp-nouveau");
+const mdpConfirmation = document.getElementById("mdp-confirmation");
+const mdpErreur = document.getElementById("mdp-erreur");
+const mdpValider = document.getElementById("mdp-valider");
+const mdpFermer = document.getElementById("mdp-fermer");
+const modalMdpGenere = document.getElementById("modal-mdp-genere");
+const mdpGenerePseudo = document.getElementById("mdp-genere-pseudo");
+const mdpGenereValeur = document.getElementById("mdp-genere-valeur");
+const mdpGenereCopier = document.getElementById("mdp-genere-copier");
+const mdpGenereFermer = document.getElementById("mdp-genere-fermer");
 
 let tousLesUtilisateurs = [];      // [{ pseudo, is_banni }]
 let personnesEnLigne = new Set();
@@ -146,6 +163,11 @@ async function verifierConnexion() {
 
   if (jeSuisAdmin) {
     adminBtn.classList.remove("cache");
+  }
+
+  // Mot de passe réinitialisé par un modérateur : changement obligatoire
+  if (data.doitChangerMdp) {
+    setTimeout(() => ouvrirChangementMdp(true), 300);
   }
 
   demarrerChat();
@@ -456,6 +478,11 @@ menuBannir.addEventListener("click", () => {
   fermerMenuUtilisateur();
 });
 
+menuMotDePasse.addEventListener("click", () => {
+  if (cibleMenu) reinitialiserMotDePasse(cibleMenu.pseudo);
+  fermerMenuUtilisateur();
+});
+
 menuSupprimer.addEventListener("click", () => {
   if (cibleMenu) supprimerCompte(cibleMenu.pseudo);
   fermerMenuUtilisateur();
@@ -591,6 +618,100 @@ function reinitialiserImagePub() {
   pubApercu.classList.add("cache");
   pubApercuImg.src = "";
 }
+
+// ---------- Gestion des mots de passe ----------
+
+function ouvrirChangementMdp(force) {
+  mdpActuel.value = "";
+  mdpNouveau.value = "";
+  mdpConfirmation.value = "";
+  mdpErreur.textContent = "";
+
+  noteMdpTemporaire.classList.toggle("cache", !force);
+  mdpFermer.classList.toggle("cache", force === true);
+
+  modalMonMdp.classList.remove("cache");
+  mdpActuel.focus();
+}
+
+btnMonMdp.addEventListener("click", () => ouvrirChangementMdp(false));
+mdpFermer.addEventListener("click", () => modalMonMdp.classList.add("cache"));
+
+mdpValider.addEventListener("click", async () => {
+  const actuel = mdpActuel.value;
+  const nouveau = mdpNouveau.value;
+
+  if (!actuel || !nouveau) {
+    mdpErreur.textContent = "Tous les champs sont requis.";
+    return;
+  }
+
+  if (nouveau.length < 4) {
+    mdpErreur.textContent = "Le nouveau mot de passe doit faire au moins 4 caractères.";
+    return;
+  }
+
+  if (nouveau !== mdpConfirmation.value) {
+    mdpErreur.textContent = "Les deux mots de passe ne correspondent pas.";
+    return;
+  }
+
+  const reponse = await fetch("/changer-motdepasse", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actuel, nouveau })
+  });
+
+  const data = await reponse.json();
+
+  if (data.succes) {
+    modalMonMdp.classList.add("cache");
+    mdpFermer.classList.remove("cache");
+    alert("Mot de passe changé.");
+  } else {
+    mdpErreur.textContent = data.erreur || "Erreur.";
+  }
+});
+
+mdpConfirmation.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") mdpValider.click();
+});
+
+// Réinitialisation par un administrateur
+async function reinitialiserMotDePasse(pseudo) {
+  if (!confirm(`Réinitialiser le mot de passe de ${pseudo} ?\n\nUn mot de passe temporaire sera généré et la personne sera déconnectée.`)) return;
+
+  const reponse = await fetch("/admin/reinitialiser-motdepasse", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pseudo })
+  });
+
+  const data = await reponse.json();
+
+  if (data.succes) {
+    mdpGenerePseudo.textContent = pseudo;
+    mdpGenereValeur.textContent = data.motdepasse;
+    modalMdpGenere.classList.remove("cache");
+  } else {
+    alert(data.erreur || "Erreur.");
+  }
+}
+
+mdpGenereCopier.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(mdpGenereValeur.textContent);
+    mdpGenereCopier.textContent = "Copié ✓";
+    setTimeout(() => { mdpGenereCopier.textContent = "Copier"; }, 1800);
+  } catch (err) {
+    alert("Copie impossible, note-le manuellement.");
+  }
+});
+
+mdpGenereFermer.addEventListener("click", () => {
+  modalMdpGenere.classList.add("cache");
+  mdpGenereValeur.textContent = "";
+});
 
 // ---------- Messages non lus ----------
 

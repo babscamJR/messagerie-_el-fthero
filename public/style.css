@@ -1370,6 +1370,53 @@ button.danger-fort:hover {
   font-weight: 600;
 }
 
+
+/* ---------- Gestion des mots de passe ---------- */
+
+#btn-mon-mdp {
+  background-color: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  padding: 5px 10px;
+  font-size: 11px;
+  border-radius: 6px;
+  cursor: pointer;
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+#btn-mon-mdp:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+#modal-mon-mdp input {
+  margin-bottom: 10px;
+}
+
+#mdp-genere-valeur {
+  background: var(--bg-page);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 14px;
+  text-align: center;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--accent);
+  user-select: all;
+}
+
+.note-modal.cache {
+  display: none !important;
+}
+
+#mdp-fermer.cache {
+  display: none !important;
+}
+
 /* ==========================================================
    CORRECTIF AFFICHAGE — à garder en dernier dans le fichier
    ========================================================== */

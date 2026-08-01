@@ -147,7 +147,7 @@ app.get("/moi", async (req, res) => {
 
   try {
     const resultat = await pool.query(
-      "SELECT is_admin, is_banni FROM utilisateurs WHERE pseudo = $1",
+      "SELECT is_admin, is_banni, doit_changer_mdp FROM utilisateurs WHERE pseudo = $1",
       [req.session.pseudo]
     );
 
@@ -159,7 +159,8 @@ app.get("/moi", async (req, res) => {
     res.json({
       connecte: true,
       pseudo: req.session.pseudo,
-      isAdmin: resultat.rows[0].is_admin
+      isAdmin: resultat.rows[0].is_admin,
+      doitChangerMdp: resultat.rows[0].doit_changer_mdp === true
     });
   } catch (err) {
     console.error("Erreur /moi :", err);
@@ -271,6 +272,104 @@ app.post("/admin/bannir", verifierAdmin, async (req, res) => {
     res.json({ succes: true });
   } catch (err) {
     console.error("Erreur bannissement :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
+});
+
+// Génère un mot de passe temporaire lisible (évite les caractères ambigus)
+function genererMotDePasseTemporaire() {
+  const lettres = "abcdefghijkmnpqrstuvwxyz";
+  const chiffres = "23456789";
+  let mdp = "";
+  for (let i = 0; i < 4; i++) mdp += lettres[Math.floor(Math.random() * lettres.length)];
+  mdp += "-";
+  for (let i = 0; i < 4; i++) mdp += chiffres[Math.floor(Math.random() * chiffres.length)];
+  return mdp;
+}
+
+// Réinitialise le mot de passe d'un compte et renvoie le nouveau
+app.post("/admin/reinitialiser-motdepasse", verifierAdmin, async (req, res) => {
+  const { pseudo } = req.body;
+
+  if (!pseudo) {
+    return res.status(400).json({ erreur: "Pseudo manquant." });
+  }
+
+  try {
+    const cible = await pool.query(
+      "SELECT is_admin FROM utilisateurs WHERE pseudo = $1",
+      [pseudo]
+    );
+
+    if (cible.rows.length === 0) {
+      return res.status(404).json({ erreur: "Utilisateur introuvable." });
+    }
+
+    // Un admin ne peut pas réinitialiser le mot de passe d'un autre admin
+    if (cible.rows[0].is_admin && pseudo !== req.session.pseudo) {
+      return res.status(403).json({ erreur: "Impossible de réinitialiser le mot de passe d'un administrateur." });
+    }
+
+    const nouveau = genererMotDePasseTemporaire();
+    const crypte = bcrypt.hashSync(nouveau, 10);
+
+    await pool.query(
+      "UPDATE utilisateurs SET motdepasse = $1, doit_changer_mdp = TRUE WHERE pseudo = $2",
+      [crypte, pseudo]
+    );
+
+    console.log(`${req.session.pseudo} a réinitialisé le mot de passe de ${pseudo}`);
+
+    // Déconnecte la personne pour qu'elle se reconnecte avec le nouveau
+    deconnecterUtilisateur(pseudo);
+
+    res.json({ succes: true, motdepasse: nouveau });
+  } catch (err) {
+    console.error("Erreur réinitialisation mot de passe :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
+});
+
+// Changer son propre mot de passe
+app.post("/changer-motdepasse", async (req, res) => {
+  if (!req.session.pseudo) {
+    return res.status(401).json({ erreur: "Non connecté." });
+  }
+
+  const { actuel, nouveau } = req.body;
+
+  if (!actuel || !nouveau) {
+    return res.status(400).json({ erreur: "Tous les champs sont requis." });
+  }
+
+  if (nouveau.length < 4) {
+    return res.status(400).json({ erreur: "Le nouveau mot de passe doit faire au moins 4 caractères." });
+  }
+
+  try {
+    const resultat = await pool.query(
+      "SELECT motdepasse FROM utilisateurs WHERE pseudo = $1",
+      [req.session.pseudo]
+    );
+
+    if (resultat.rows.length === 0) {
+      return res.status(404).json({ erreur: "Compte introuvable." });
+    }
+
+    if (!bcrypt.compareSync(actuel, resultat.rows[0].motdepasse)) {
+      return res.status(400).json({ erreur: "Mot de passe actuel incorrect." });
+    }
+
+    const crypte = bcrypt.hashSync(nouveau, 10);
+    await pool.query(
+      "UPDATE utilisateurs SET motdepasse = $1, doit_changer_mdp = FALSE WHERE pseudo = $2",
+      [crypte, req.session.pseudo]
+    );
+
+    console.log(`${req.session.pseudo} a changé son mot de passe`);
+    res.json({ succes: true });
+  } catch (err) {
+    console.error("Erreur changement mot de passe :", err);
     res.status(500).json({ erreur: "Erreur serveur." });
   }
 });
