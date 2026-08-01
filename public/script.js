@@ -80,6 +80,16 @@ const enTrainDEcrire = {};
 let minuteurFrappe = null;
 let frappeEnvoyee = false;
 
+// Compteurs de messages non lus, par conversation ("salon:radio1", "prive:lino"...)
+const nonLus = {};
+
+window.addEventListener("focus", () => {
+  fenetreActive = true;
+  // La conversation ouverte devient lue dès qu'on revient sur l'onglet
+  if (typeof marquerCommeLu === "function") marquerCommeLu(conversationActuelle);
+});
+window.addEventListener("blur", () => { fenetreActive = false; });
+
 let publicationOuverte = null;
 let publicationsCache = [];
 let pubFichierSelectionne = null;
@@ -406,6 +416,8 @@ function afficherListeUtilisateurs() {
 
     listeUtilisateursDiv.appendChild(item);
   });
+
+  rafraichirBadges();
 }
 
 function ouvrirMenuUtilisateur(utilisateur, x, y) {
@@ -474,6 +486,8 @@ function construireListeSalons() {
     listeSalonsDiv.appendChild(item);
   });
 
+  rafraichirBadges();
+
   // Marque le salon actif
   if (conversationActuelle.type === "salon") {
     const actif = listeSalonsDiv.querySelector(`[data-salon-id="${conversationActuelle.id}"]`);
@@ -490,6 +504,7 @@ function ouvrirSalon(id) {
   if (!salonsDisponibles[id]) return;
 
   conversationActuelle = { type: "salon", id };
+  marquerCommeLu(conversationActuelle);
   titreConversation.textContent = salonsDisponibles[id].nom;
 
   const item = listeSalonsDiv.querySelector(`[data-salon-id="${id}"]`);
@@ -542,6 +557,7 @@ function mettreAJourZoneSaisie() {
 function ouvrirConversationPrivee(pseudo) {
   arreterFrappe();
   conversationActuelle = { type: "prive", id: pseudo };
+  marquerCommeLu(conversationActuelle);
   titreConversation.textContent = "👤 " + pseudo;
   majIndicateurFrappe();
 
@@ -572,6 +588,71 @@ function reinitialiserImagePub() {
   pubImage.value = "";
   pubApercu.classList.add("cache");
   pubApercuImg.src = "";
+}
+
+// ---------- Messages non lus ----------
+
+// Faut-il compter ce message comme non lu ?
+function estConversationOuverte(cle) {
+  return fenetreActive && cleCache(conversationActuelle) === cle;
+}
+
+function incrementerNonLus(cle) {
+  if (estConversationOuverte(cle)) return;
+  nonLus[cle] = (nonLus[cle] || 0) + 1;
+  rafraichirBadges();
+  majTitreOnglet();
+}
+
+function marquerCommeLu(conv) {
+  const cle = cleCache(conv);
+  if (nonLus[cle]) {
+    delete nonLus[cle];
+    rafraichirBadges();
+    majTitreOnglet();
+  }
+}
+
+// Place ou retire les pastilles de compteur dans la barre latérale
+function rafraichirBadges() {
+  // Salons
+  listeSalonsDiv.querySelectorAll("[data-salon-id]").forEach(el => {
+    poserBadge(el, nonLus["salon:" + el.dataset.salonId]);
+  });
+
+  // Groupes
+  listeGroupes.querySelectorAll("[data-groupe-id]").forEach(el => {
+    poserBadge(el, nonLus["groupe:" + Number(el.dataset.groupeId)]);
+  });
+
+  // Messages privés
+  listeUtilisateursDiv.querySelectorAll("[data-pseudo]").forEach(el => {
+    poserBadge(el, nonLus["prive:" + el.dataset.pseudo]);
+  });
+}
+
+function poserBadge(element, nombre) {
+  const existant = element.querySelector(".badge-nonlus");
+  if (existant) existant.remove();
+
+  if (!nombre) {
+    element.classList.remove("a-des-nonlus");
+    return;
+  }
+
+  element.classList.add("a-des-nonlus");
+  const badge = document.createElement("span");
+  badge.classList.add("badge-nonlus");
+  badge.textContent = nombre > 99 ? "99+" : nombre;
+  element.appendChild(badge);
+}
+
+// Affiche le total dans le titre de l'onglet
+function majTitreOnglet() {
+  const total = Object.values(nonLus).reduce((a, b) => a + b, 0);
+  document.title = total > 0
+    ? `(${total}) Ma Messagerie`
+    : "Elfthero Message - Messagerie instantanée gratuite";
 }
 
 // ---------- Indicateur "est en train d'écrire" ----------
@@ -718,6 +799,8 @@ function afficherMesGroupes(donnees) {
     listeGroupes.appendChild(item);
   });
 
+  rafraichirBadges();
+
   // Rétablit le marquage si un groupe est ouvert
   if (conversationActuelle.type === "groupe") {
     const actif = listeGroupes.querySelector(`[data-groupe-id="${conversationActuelle.id}"]`);
@@ -731,6 +814,7 @@ function ouvrirGroupe(id) {
 
   arreterFrappe();
   conversationActuelle = { type: "groupe", id };
+  marquerCommeLu(conversationActuelle);
   titreConversation.textContent = "👥 " + groupe.titre;
   majIndicateurFrappe();
 
@@ -1083,6 +1167,67 @@ function afficherMessages(liste) {
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
+// Met en forme la date d'un message selon son ancienneté
+function formaterDate(iso) {
+  if (!iso) return "";
+
+  const date = new Date(iso);
+  const maintenant = new Date();
+
+  const heure = date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
+  const memeJour = date.toDateString() === maintenant.toDateString();
+  if (memeJour) return heure;
+
+  const hier = new Date(maintenant);
+  hier.setDate(hier.getDate() - 1);
+  if (date.toDateString() === hier.toDateString()) return "Hier " + heure;
+
+  // Moins d'une semaine : on affiche le jour
+  const joursEcoules = (maintenant - date) / (1000 * 60 * 60 * 24);
+  if (joursEcoules < 7) {
+    const jour = date.toLocaleDateString("fr-FR", { weekday: "long" });
+    return jour.charAt(0).toUpperCase() + jour.slice(1) + " " + heure;
+  }
+
+  // Au-delà : date complète
+  return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" }) + " " + heure;
+}
+
+// Formate une date : heure seule si aujourd'hui, sinon date + heure
+function formaterDate(iso) {
+  if (!iso) return "";
+
+  const date = new Date(iso);
+  const maintenant = new Date();
+
+  const heure = date.toLocaleTimeString("fr-BE", {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+
+  const memeJour =
+    date.getDate() === maintenant.getDate() &&
+    date.getMonth() === maintenant.getMonth() &&
+    date.getFullYear() === maintenant.getFullYear();
+
+  if (memeJour) return heure;
+
+  const hier = new Date(maintenant);
+  hier.setDate(hier.getDate() - 1);
+  const estHier =
+    date.getDate() === hier.getDate() &&
+    date.getMonth() === hier.getMonth() &&
+    date.getFullYear() === hier.getFullYear();
+
+  if (estHier) return "Hier " + heure;
+
+  return date.toLocaleDateString("fr-BE", {
+    day: "2-digit",
+    month: "2-digit"
+  }) + " " + heure;
+}
+
 function ajouterMessageAffiche(data) {
   const messageEl = document.createElement("div");
   messageEl.classList.add("message");
@@ -1114,6 +1259,24 @@ function ajouterMessageAffiche(data) {
     }
 
     messageEl.appendChild(texteEl);
+  }
+
+  // Heure du message
+  if (data.date) {
+    const heureEl = document.createElement("span");
+    heureEl.classList.add("heure-message");
+    heureEl.textContent = formaterDate(data.date);
+    heureEl.title = new Date(data.date).toLocaleString("fr-FR");
+    messageEl.appendChild(heureEl);
+  }
+
+  // Heure du message
+  if (data.date) {
+    const heure = document.createElement("span");
+    heure.classList.add("heure-message");
+    heure.textContent = formaterDate(data.date);
+    heure.title = new Date(data.date).toLocaleString("fr-BE");
+    messageEl.appendChild(heure);
   }
 
   // Bouton de suppression visible uniquement pour les admins
@@ -1351,6 +1514,9 @@ function demarrerChat() {
       ajouterMessageAffiche(message);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
+
+    // On ne se notifie pas soi-même
+    if (message.auteur !== monPseudo) incrementerNonLus(cle);
   });
 
   // Erreur d'envoi (ex : salon réservé aux admins)
@@ -1406,6 +1572,8 @@ function demarrerChat() {
       ajouterMessageAffiche(data.message);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
+
+    if (data.message.auteur !== monPseudo) incrementerNonLus(cle);
   });
 
   socket.on("groupe_cree", () => {
@@ -1715,6 +1883,8 @@ function demarrerChat() {
       ajouterMessageAffiche(data.message);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
+
+    if (data.message.auteur !== monPseudo) incrementerNonLus(cle);
   });
 }
 

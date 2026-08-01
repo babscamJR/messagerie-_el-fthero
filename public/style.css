@@ -1313,6 +1313,63 @@ button.danger-fort:hover {
   }
 }
 
+
+/* ---------- Heure des messages ---------- */
+
+.message {
+  padding-bottom: 18px;
+}
+
+.heure-message {
+  position: absolute;
+  bottom: 5px;
+  right: 11px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  opacity: 0.75;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.message.mine .heure-message {
+  color: var(--accent);
+  opacity: 0.6;
+}
+
+/* ---------- Pastilles de messages non lus ---------- */
+
+.badge-nonlus {
+  background: var(--accent);
+  color: var(--bg-page);
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.salon-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.salon-item.a-des-nonlus {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.salon-item.a-des-nonlus .nom-utilisateur {
+  font-weight: 600;
+}
+
 /* ==========================================================
    CORRECTIF AFFICHAGE — à garder en dernier dans le fichier
    ========================================================== */
