@@ -486,6 +486,8 @@ function construireListeSalons() {
     listeSalonsDiv.appendChild(item);
   });
 
+  if (typeof rafraichirBadges === "function") rafraichirBadges();
+
   rafraichirBadges();
 
   // Marque le salon actif
@@ -798,6 +800,8 @@ function afficherMesGroupes(donnees) {
     item.addEventListener("click", () => ouvrirGroupe(g.id));
     listeGroupes.appendChild(item);
   });
+
+  if (typeof rafraichirBadges === "function") rafraichirBadges();
 
   rafraichirBadges();
 
@@ -1884,7 +1888,13 @@ function demarrerChat() {
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    if (data.message.auteur !== monPseudo) incrementerNonLus(cle);
+    if (data.message.auteur !== monPseudo) {
+      incrementerNonLus(cle);
+
+      // Si la personne n'est pas encore dans la liste, on la recharge
+      const connu = tousLesUtilisateurs.some(u => u.pseudo === data.avec);
+      if (!connu) chargerListeUtilisateurs();
+    }
   });
 }
 
