@@ -1467,6 +1467,189 @@ button.danger-fort:hover {
   font-size: 17px;
 }
 
+
+/* ---------- Personnalisation et sidebar repliable ---------- */
+
+body {
+  font-family: var(--police, 'Segoe UI', Arial, sans-serif);
+  font-size: var(--taille-texte, 14px);
+}
+
+.message,
+#message-input,
+.publication,
+.commentaire,
+.salon-item,
+.modal-contenu {
+  font-family: var(--police, 'Segoe UI', Arial, sans-serif);
+}
+
+.message,
+#message-input,
+.detail-texte {
+  font-size: var(--taille-texte, 14px);
+}
+
+/* Bouton de personnalisation */
+
+#btn-personnalisation {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+#btn-personnalisation:hover {
+  border-color: var(--accent);
+  background: var(--bg-message-other);
+}
+
+#btn-personnalisation svg {
+  width: 18px;
+  height: 18px;
+}
+
+.plus-perso {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Repli de la barre latérale */
+
+#btn-masquer-sidebar {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 6px;
+  line-height: 1;
+  float: right;
+}
+
+#btn-masquer-sidebar:hover {
+  color: var(--accent);
+}
+
+#btn-afficher-sidebar {
+  position: absolute;
+  top: 18px;
+  left: 12px;
+  z-index: 20;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 16px;
+  padding: 5px 10px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+#btn-afficher-sidebar:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+#btn-afficher-sidebar.cache {
+  display: none !important;
+}
+
+.app-container.sidebar-masquee .sidebar {
+  display: none;
+}
+
+.app-container.sidebar-masquee .chat-header {
+  padding-left: 52px;
+}
+
+/* Listes de choix dans la fenêtre de personnalisation */
+
+.section-perso {
+  margin-bottom: 20px;
+}
+
+.titre-section {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  margin-bottom: 9px;
+}
+
+.liste-choix {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 7px;
+}
+
+.choix {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  background: var(--bg-page);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.choix:hover {
+  border-color: var(--accent-hover);
+}
+
+.choix.actif {
+  border-color: var(--accent);
+  background: var(--bg-message-mine);
+  font-weight: 600;
+}
+
+.apercu-couleur {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.apercu-fond {
+  width: 17px;
+  height: 17px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  border: 1px solid;
+}
+
+.apercu-police {
+  min-width: 22px;
+  font-weight: 700;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+@media (max-width: 700px) {
+  .liste-choix {
+    grid-template-columns: 1fr;
+  }
+
+  #btn-masquer-sidebar {
+    display: none;
+  }
+
+  .app-container.sidebar-masquee .chat-header {
+    padding-left: 0;
+  }
+}
+
 /* ==========================================================
    CORRECTIF AFFICHAGE — à garder en dernier dans le fichier
    ========================================================== */

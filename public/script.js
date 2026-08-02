@@ -632,6 +632,246 @@ function reinitialiserImagePub() {
   pubApercuImg.src = "";
 }
 
+// ---------- Personnalisation ----------
+
+const COULEURS = [
+  { id: "vert",    nom: "Vert néon",   accent: "#2ecc71", hover: "#27ae60", bulle: "#1a4d2e" },
+  { id: "bleu",    nom: "Bleu océan",  accent: "#3b9eff", hover: "#2d7fd4", bulle: "#173553" },
+  { id: "violet",  nom: "Violet",      accent: "#a855f7", hover: "#8b3fd4", bulle: "#3b1d5c" },
+  { id: "rose",    nom: "Rose",        accent: "#f472b6", hover: "#db5a9c", bulle: "#54203c" },
+  { id: "orange",  nom: "Orange",      accent: "#fb923c", hover: "#e07b2c", bulle: "#5a3418" },
+  { id: "rouge",   nom: "Rouge sang",  accent: "#ef4444", hover: "#cc3838", bulle: "#5c1f1f" },
+  { id: "cyan",    nom: "Cyan",        accent: "#22d3ee", hover: "#1bb0c7", bulle: "#154c57" },
+  { id: "or",      nom: "Or",          accent: "#eab308", hover: "#c99a06", bulle: "#4d3d0a" }
+];
+
+const FONDS = [
+  { id: "sombre",   nom: "Sombre",       page: "#0d1117", carte: "#161b22", autre: "#21262d", bordure: "#30363d", texte: "#e6edf3", texte2: "#8b949e" },
+  { id: "noir",     nom: "Noir profond", page: "#000000", carte: "#0a0a0a", autre: "#161616", bordure: "#262626", texte: "#f0f0f0", texte2: "#888888" },
+  { id: "ardoise",  nom: "Ardoise",      page: "#1a1d23", carte: "#22262e", autre: "#2d323c", bordure: "#3a404c", texte: "#e8eaed", texte2: "#9aa0a6" },
+  { id: "marine",   nom: "Bleu nuit",    page: "#0f172a", carte: "#1e293b", autre: "#334155", bordure: "#475569", texte: "#e2e8f0", texte2: "#94a3b8" },
+  { id: "clair",    nom: "Clair",        page: "#f5f5f7", carte: "#ffffff", autre: "#ebebef", bordure: "#d6d6dc", texte: "#1a1a1e", texte2: "#6b6b76" }
+];
+
+const POLICES = [
+  { id: "systeme",  nom: "Système",      valeur: "'Segoe UI', Arial, sans-serif" },
+  { id: "serif",    nom: "Serif",         valeur: "Georgia, 'Times New Roman', serif" },
+  { id: "mono",     nom: "Monospace",     valeur: "'Consolas', 'Courier New', monospace" },
+  { id: "arrondie", nom: "Arrondie",      valeur: "'Trebuchet MS', 'Verdana', sans-serif" },
+  { id: "compacte", nom: "Compacte",      valeur: "'Tahoma', 'Geneva', sans-serif" },
+  { id: "large",    nom: "Large",         valeur: "'Verdana', 'Geneva', sans-serif" }
+];
+
+const TAILLES = [
+  { id: "petite", nom: "Petite",  valeur: "13px" },
+  { id: "normale", nom: "Normale", valeur: "14px" },
+  { id: "grande", nom: "Grande",  valeur: "16px" },
+  { id: "xgrande", nom: "Très grande", valeur: "18px" }
+];
+
+const PERSO_DEFAUT = { couleur: "vert", fond: "sombre", police: "systeme", taille: "normale" };
+
+let perso = { ...PERSO_DEFAUT };
+
+function chargerPreferences() {
+  try {
+    const brut = localStorage.getItem("perso");
+    if (brut) perso = { ...PERSO_DEFAUT, ...JSON.parse(brut) };
+  } catch (err) {
+    perso = { ...PERSO_DEFAUT };
+  }
+  appliquerPreferences();
+}
+
+function sauvegarderPreferences() {
+  try {
+    localStorage.setItem("perso", JSON.stringify(perso));
+  } catch (err) {
+    // Stockage indisponible : les réglages resteront le temps de la session
+  }
+}
+
+function appliquerPreferences() {
+  const racine = document.documentElement;
+
+  const couleur = COULEURS.find(c => c.id === perso.couleur) || COULEURS[0];
+  racine.style.setProperty("--accent", couleur.accent);
+  racine.style.setProperty("--accent-hover", couleur.hover);
+  racine.style.setProperty("--bg-message-mine", couleur.bulle);
+
+  const fond = FONDS.find(f => f.id === perso.fond) || FONDS[0];
+  racine.style.setProperty("--bg-page", fond.page);
+  racine.style.setProperty("--bg-card", fond.carte);
+  racine.style.setProperty("--bg-sidebar", fond.page);
+  racine.style.setProperty("--bg-message-other", fond.autre);
+  racine.style.setProperty("--border-color", fond.bordure);
+  racine.style.setProperty("--text-primary", fond.texte);
+  racine.style.setProperty("--text-secondary", fond.texte2);
+
+  const police = POLICES.find(p => p.id === perso.police) || POLICES[0];
+  racine.style.setProperty("--police", police.valeur);
+
+  const taille = TAILLES.find(t => t.id === perso.taille) || TAILLES[1];
+  racine.style.setProperty("--taille-texte", taille.valeur);
+}
+
+function construireListesPerso() {
+  // Couleurs : pastille + nom
+  const listeCouleurs = document.getElementById("liste-couleurs");
+  listeCouleurs.innerHTML = "";
+  COULEURS.forEach(c => {
+    const bouton = document.createElement("button");
+    bouton.classList.add("choix");
+    if (perso.couleur === c.id) bouton.classList.add("actif");
+
+    const pastille = document.createElement("span");
+    pastille.classList.add("apercu-couleur");
+    pastille.style.background = c.accent;
+
+    const nom = document.createElement("span");
+    nom.textContent = c.nom;
+
+    bouton.append(pastille, nom);
+    bouton.addEventListener("click", () => {
+      perso.couleur = c.id;
+      appliquerPreferences();
+      sauvegarderPreferences();
+      construireListesPerso();
+    });
+    listeCouleurs.appendChild(bouton);
+  });
+
+  // Fonds : carré d'aperçu + nom
+  const listeFonds = document.getElementById("liste-fonds");
+  listeFonds.innerHTML = "";
+  FONDS.forEach(f => {
+    const bouton = document.createElement("button");
+    bouton.classList.add("choix");
+    if (perso.fond === f.id) bouton.classList.add("actif");
+
+    const apercu = document.createElement("span");
+    apercu.classList.add("apercu-fond");
+    apercu.style.background = f.page;
+    apercu.style.borderColor = f.bordure;
+
+    const nom = document.createElement("span");
+    nom.textContent = f.nom;
+
+    bouton.append(apercu, nom);
+    bouton.addEventListener("click", () => {
+      perso.fond = f.id;
+      appliquerPreferences();
+      sauvegarderPreferences();
+      construireListesPerso();
+    });
+    listeFonds.appendChild(bouton);
+  });
+
+  // Polices : nom écrit dans la police elle-même
+  const listePolices = document.getElementById("liste-polices");
+  listePolices.innerHTML = "";
+  POLICES.forEach(p => {
+    const bouton = document.createElement("button");
+    bouton.classList.add("choix");
+    if (perso.police === p.id) bouton.classList.add("actif");
+
+    const nom = document.createElement("span");
+    nom.textContent = p.nom;
+    nom.style.fontFamily = p.valeur;
+
+    const exemple = document.createElement("span");
+    exemple.classList.add("apercu-police");
+    exemple.textContent = "Aa";
+    exemple.style.fontFamily = p.valeur;
+
+    bouton.append(exemple, nom);
+    bouton.addEventListener("click", () => {
+      perso.police = p.id;
+      appliquerPreferences();
+      sauvegarderPreferences();
+      construireListesPerso();
+    });
+    listePolices.appendChild(bouton);
+  });
+
+  // Tailles
+  const listeTailles = document.getElementById("liste-tailles");
+  listeTailles.innerHTML = "";
+  TAILLES.forEach(t => {
+    const bouton = document.createElement("button");
+    bouton.classList.add("choix");
+    if (perso.taille === t.id) bouton.classList.add("actif");
+
+    const exemple = document.createElement("span");
+    exemple.classList.add("apercu-police");
+    exemple.textContent = "Aa";
+    exemple.style.fontSize = t.valeur;
+
+    const nom = document.createElement("span");
+    nom.textContent = t.nom;
+
+    bouton.append(exemple, nom);
+    bouton.addEventListener("click", () => {
+      perso.taille = t.id;
+      appliquerPreferences();
+      sauvegarderPreferences();
+      construireListesPerso();
+    });
+    listeTailles.appendChild(bouton);
+  });
+}
+
+const btnPersonnalisation = document.getElementById("btn-personnalisation");
+const modalPersonnalisation = document.getElementById("modal-personnalisation");
+const persoFermer = document.getElementById("perso-fermer");
+const persoReinitialiser = document.getElementById("perso-reinitialiser");
+
+btnPersonnalisation.addEventListener("click", () => {
+  construireListesPerso();
+  modalPersonnalisation.classList.remove("cache");
+});
+
+persoFermer.addEventListener("click", () => {
+  modalPersonnalisation.classList.add("cache");
+});
+
+persoReinitialiser.addEventListener("click", () => {
+  perso = { ...PERSO_DEFAUT };
+  appliquerPreferences();
+  sauvegarderPreferences();
+  construireListesPerso();
+});
+
+chargerPreferences();
+
+// ---------- Barre latérale repliable ----------
+
+const btnMasquerSidebar = document.getElementById("btn-masquer-sidebar");
+const btnAfficherSidebar = document.getElementById("btn-afficher-sidebar");
+
+function basculerSidebar(masquer) {
+  appContainer.classList.toggle("sidebar-masquee", masquer);
+  btnAfficherSidebar.classList.toggle("cache", !masquer);
+
+  try {
+    localStorage.setItem("sidebarMasquee", masquer ? "1" : "0");
+  } catch (err) {
+    // Stockage indisponible, on ignore
+  }
+}
+
+btnMasquerSidebar.addEventListener("click", () => basculerSidebar(true));
+btnAfficherSidebar.addEventListener("click", () => basculerSidebar(false));
+
+// Restaure l'état précédent (sur ordinateur seulement)
+try {
+  if (localStorage.getItem("sidebarMasquee") === "1" && window.innerWidth > 700) {
+    basculerSidebar(true);
+  }
+} catch (err) {
+  // Ignoré
+}
+
 // ---------- Limites anti-spam ----------
 
 function afficherLimite(titre, message, secondes) {

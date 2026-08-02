@@ -14,6 +14,7 @@
     <!-- Barre latérale -->
     <div class="sidebar">
       <div class="sidebar-header">
+        <button id="btn-masquer-sidebar" title="Masquer le menu">‹</button>
         <h1 id="titre-app" title="Messagerie">
           <svg class="logo-mini" viewBox="0 0 200 200" aria-hidden="true">
             <ellipse cx="100" cy="90" rx="62" ry="28" fill="none" stroke="#27ae60" stroke-width="11" transform="rotate(-30 100 90)"/>
@@ -51,9 +52,18 @@
     <div class="chat-container">
       <div id="fond-cubes" class="cache" aria-hidden="true"></div>
 
+      <button id="btn-afficher-sidebar" class="cache" title="Afficher le menu">☰</button>
+
       <div class="chat-header">
         <span id="titre-conversation">📻 Radio 1</span>
         <span class="header-actions">
+          <button id="btn-personnalisation" title="Personnaliser l'apparence">
+            <svg viewBox="0 0 200 200" aria-hidden="true">
+              <ellipse cx="100" cy="90" rx="62" ry="28" fill="none" stroke="currentColor" stroke-width="13" transform="rotate(-30 100 90)"/>
+              <path d="M100 46 Q107 84 135 90 Q107 96 100 134 Q93 96 65 90 Q93 84 100 46 Z" fill="currentColor"/>
+            </svg>
+            <span class="plus-perso">+</span>
+          </button>
           <button id="btn-inviter" class="cache" title="Inviter quelqu'un">➕ Inviter</button>
           <button id="btn-quitter-groupe" class="cache" title="Quitter le groupe">Quitter</button>
           <button id="retour-btn" class="mobile-only">← Retour</button>
@@ -227,6 +237,38 @@
       <div id="limite-compte-rebours" class="cache"></div>
       <div class="modal-actions">
         <button id="limite-fermer">Compris</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fenêtre : personnalisation -->
+  <div id="modal-personnalisation" class="modal cache">
+    <div class="modal-contenu large">
+      <h2>🎨 Personnaliser l'apparence</h2>
+
+      <div class="section-perso">
+        <div class="titre-section">Couleur principale</div>
+        <div id="liste-couleurs" class="liste-choix"></div>
+      </div>
+
+      <div class="section-perso">
+        <div class="titre-section">Fond</div>
+        <div id="liste-fonds" class="liste-choix"></div>
+      </div>
+
+      <div class="section-perso">
+        <div class="titre-section">Police d'écriture</div>
+        <div id="liste-polices" class="liste-choix"></div>
+      </div>
+
+      <div class="section-perso">
+        <div class="titre-section">Taille du texte</div>
+        <div id="liste-tailles" class="liste-choix"></div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="perso-reinitialiser" class="secondaire">Réinitialiser</button>
+        <button id="perso-fermer">Fermer</button>
       </div>
     </div>
   </div>
