@@ -669,7 +669,35 @@ const TAILLES = [
   { id: "xgrande", nom: "Très grande", valeur: "18px" }
 ];
 
-const PERSO_DEFAUT = { couleur: "vert", fond: "sombre", police: "systeme", taille: "normale" };
+const MOTIFS = [
+  { id: "aucun",     nom: "Aucun",          icone: "∅" },
+  { id: "cubes",     nom: "Cubes 3D",       icone: "⬛" },
+  { id: "grille",    nom: "Grille",          icone: "▦" },
+  { id: "points",    nom: "Points",          icone: "⋯" },
+  { id: "vagues",    nom: "Vagues",          icone: "〰" },
+  { id: "etoiles",   nom: "Étoiles",         icone: "✦" },
+  { id: "pluie",     nom: "Pluie de code",   icone: "⋮" },
+  { id: "bulles",    nom: "Bulles",          icone: "○" },
+  { id: "hexagones", nom: "Hexagones",       icone: "⬡" },
+  { id: "diagonales", nom: "Diagonales",     icone: "╱" },
+  { id: "cercles",   nom: "Ondes",           icone: "◎" },
+  { id: "particules", nom: "Particules",     icone: "✧" }
+];
+
+const INTENSITES = [
+  { id: "discret", nom: "Discret", valeur: 0.12 },
+  { id: "moyen",   nom: "Moyen",   valeur: 0.22 },
+  { id: "marque",  nom: "Marqué",  valeur: 0.38 }
+];
+
+const PERSO_DEFAUT = {
+  couleur: "vert",
+  fond: "sombre",
+  police: "systeme",
+  taille: "normale",
+  motif: "cubes",
+  intensite: "moyen"
+};
 
 let perso = { ...PERSO_DEFAUT };
 
@@ -713,6 +741,9 @@ function appliquerPreferences() {
 
   const taille = TAILLES.find(t => t.id === perso.taille) || TAILLES[1];
   racine.style.setProperty("--taille-texte", taille.valeur);
+
+  const intensite = INTENSITES.find(i => i.id === perso.intensite) || INTENSITES[1];
+  racine.style.setProperty("--intensite-motif", intensite.valeur);
 }
 
 function construireListesPerso() {
@@ -793,6 +824,54 @@ function construireListesPerso() {
     });
     listePolices.appendChild(bouton);
   });
+
+  // Motifs
+  const listeMotifs = document.getElementById("liste-motifs");
+  if (listeMotifs) {
+    listeMotifs.innerHTML = "";
+    MOTIFS.forEach(m => {
+      const bouton = document.createElement("button");
+      bouton.classList.add("choix");
+      if (perso.motif === m.id) bouton.classList.add("actif");
+
+      const icone = document.createElement("span");
+      icone.classList.add("apercu-motif");
+      icone.textContent = m.icone;
+
+      const nom = document.createElement("span");
+      nom.textContent = m.nom;
+
+      bouton.append(icone, nom);
+      bouton.addEventListener("click", () => {
+        perso.motif = m.id;
+        appliquerPreferences();
+        sauvegarderPreferences();
+        construireListesPerso();
+        if (fondCubes) fondCubes.dataset.motif = "";
+        majFondCubes();
+      });
+      listeMotifs.appendChild(bouton);
+    });
+  }
+
+  // Intensité du motif
+  const listeIntensites = document.getElementById("liste-intensites");
+  if (listeIntensites) {
+    listeIntensites.innerHTML = "";
+    INTENSITES.forEach(i => {
+      const bouton = document.createElement("button");
+      bouton.classList.add("choix");
+      if (perso.intensite === i.id) bouton.classList.add("actif");
+      bouton.textContent = i.nom;
+      bouton.addEventListener("click", () => {
+        perso.intensite = i.id;
+        appliquerPreferences();
+        sauvegarderPreferences();
+        construireListesPerso();
+      });
+      listeIntensites.appendChild(bouton);
+    });
+  }
 
   // Tailles
   const listeTailles = document.getElementById("liste-tailles");
@@ -1359,55 +1438,152 @@ async function repondreGroupe(id, accepter, titre) {
   }
 }
 
-// ---------- Fond animé (grille de cubes) ----------
+// ---------- Fond animé (motifs) ----------
 
 const fondCubes = document.getElementById("fond-cubes");
 
-function construireFondCubes() {
-  if (!fondCubes || fondCubes.dataset.pret) return;
+// Génère le motif choisi dans le conteneur d'arrière-plan
+function construireMotif() {
+  if (!fondCubes) return;
 
-  // Moins de cubes sur mobile pour préserver les performances
-  const taille = window.innerWidth < 700 ? 5 : 7;
+  fondCubes.innerHTML = "";
+  fondCubes.className = fondCubes.classList.contains("cache") ? "cache" : "";
+  fondCubes.classList.add("motif-" + perso.motif);
 
-  const scene = document.createElement("div");
-  scene.classList.add("cubes-scene");
-  scene.style.gridTemplateColumns = `repeat(${taille}, 1fr)`;
-  scene.style.gridTemplateRows = `repeat(${taille}, 1fr)`;
+  const petitEcran = window.innerWidth < 700;
 
-  const faces = ["top", "bottom", "left", "right", "front", "back"];
+  switch (perso.motif) {
+    case "cubes": {
+      const taille = petitEcran ? 5 : 7;
+      const scene = document.createElement("div");
+      scene.classList.add("cubes-scene");
+      scene.style.gridTemplateColumns = `repeat(${taille}, 1fr)`;
+      scene.style.gridTemplateRows = `repeat(${taille}, 1fr)`;
 
-  for (let ligne = 0; ligne < taille; ligne++) {
-    for (let colonne = 0; colonne < taille; colonne++) {
-      const cube = document.createElement("div");
-      cube.classList.add("cube");
-      cube.style.setProperty("--taille", "100%");
+      const faces = ["top", "bottom", "left", "right", "front", "back"];
 
-      // Le délai crée une vague qui traverse la grille en diagonale
-      const distance = ligne + colonne;
-      cube.style.animationDelay = (distance * 0.18) + "s";
+      for (let l = 0; l < taille; l++) {
+        for (let c = 0; c < taille; c++) {
+          const cube = document.createElement("div");
+          cube.classList.add("cube");
+          cube.style.setProperty("--taille", "100%");
+          cube.style.animationDelay = ((l + c) * 0.18) + "s";
+          faces.forEach(nom => {
+            const face = document.createElement("div");
+            face.classList.add("cube-face", "cube-face--" + nom);
+            cube.appendChild(face);
+          });
+          scene.appendChild(cube);
+        }
+      }
+      fondCubes.appendChild(scene);
+      break;
+    }
 
-      faces.forEach(nom => {
-        const face = document.createElement("div");
-        face.classList.add("cube-face", "cube-face--" + nom);
-        cube.appendChild(face);
-      });
+    case "points":
+    case "grille":
+    case "diagonales":
+    case "hexagones":
+      // Ces motifs sont entièrement gérés en CSS
+      break;
 
-      scene.appendChild(cube);
+    case "vagues": {
+      for (let i = 0; i < 4; i++) {
+        const vague = document.createElement("div");
+        vague.classList.add("vague");
+        vague.style.animationDelay = (i * 1.6) + "s";
+        vague.style.top = (18 + i * 20) + "%";
+        fondCubes.appendChild(vague);
+      }
+      break;
+    }
+
+    case "etoiles": {
+      const nombre = petitEcran ? 26 : 44;
+      for (let i = 0; i < nombre; i++) {
+        const etoile = document.createElement("div");
+        etoile.classList.add("etoile");
+        etoile.style.left = Math.random() * 100 + "%";
+        etoile.style.top = Math.random() * 100 + "%";
+        etoile.style.animationDelay = (Math.random() * 4) + "s";
+        etoile.style.animationDuration = (2.5 + Math.random() * 2.5) + "s";
+        const taille = 2 + Math.random() * 3;
+        etoile.style.width = taille + "px";
+        etoile.style.height = taille + "px";
+        fondCubes.appendChild(etoile);
+      }
+      break;
+    }
+
+    case "pluie": {
+      const colonnes = petitEcran ? 12 : 22;
+      for (let i = 0; i < colonnes; i++) {
+        const trainee = document.createElement("div");
+        trainee.classList.add("trainee");
+        trainee.style.left = (i / colonnes) * 100 + "%";
+        trainee.style.animationDelay = (Math.random() * 5) + "s";
+        trainee.style.animationDuration = (3.5 + Math.random() * 4) + "s";
+        fondCubes.appendChild(trainee);
+      }
+      break;
+    }
+
+    case "bulles": {
+      const nombre = petitEcran ? 10 : 18;
+      for (let i = 0; i < nombre; i++) {
+        const bulle = document.createElement("div");
+        bulle.classList.add("bulle-fond");
+        const taille = 14 + Math.random() * 46;
+        bulle.style.width = taille + "px";
+        bulle.style.height = taille + "px";
+        bulle.style.left = Math.random() * 100 + "%";
+        bulle.style.animationDelay = (Math.random() * 9) + "s";
+        bulle.style.animationDuration = (9 + Math.random() * 9) + "s";
+        fondCubes.appendChild(bulle);
+      }
+      break;
+    }
+
+    case "cercles": {
+      for (let i = 0; i < 5; i++) {
+        const onde = document.createElement("div");
+        onde.classList.add("onde");
+        onde.style.animationDelay = (i * 1.5) + "s";
+        fondCubes.appendChild(onde);
+      }
+      break;
+    }
+
+    case "particules": {
+      const nombre = petitEcran ? 16 : 30;
+      for (let i = 0; i < nombre; i++) {
+        const p = document.createElement("div");
+        p.classList.add("particule");
+        p.style.left = Math.random() * 100 + "%";
+        p.style.top = Math.random() * 100 + "%";
+        p.style.animationDelay = (Math.random() * 8) + "s";
+        p.style.animationDuration = (7 + Math.random() * 8) + "s";
+        fondCubes.appendChild(p);
+      }
+      break;
     }
   }
-
-  fondCubes.appendChild(scene);
-  fondCubes.dataset.pret = "1";
 }
 
 // Affiche le fond uniquement dans Radio 1
 function majFondCubes() {
   if (!fondCubes) return;
 
-  const actif = conversationActuelle.type === "salon" && conversationActuelle.id === "radio1";
+  const actif =
+    perso.motif !== "aucun" &&
+    conversationActuelle.type === "salon" &&
+    conversationActuelle.id === "radio1";
 
   if (actif) {
-    construireFondCubes();
+    if (!fondCubes.firstChild || fondCubes.dataset.motif !== perso.motif) {
+      construireMotif();
+      fondCubes.dataset.motif = perso.motif;
+    }
     fondCubes.classList.remove("cache");
   } else {
     fondCubes.classList.add("cache");
