@@ -390,8 +390,20 @@ function afficherListeUtilisateurs() {
   const filtre = (rechercheUtilisateur.value || "").trim().toLowerCase();
   listeUtilisateursDiv.innerHTML = "";
 
+  // Priorité aux pseudos qui commencent par la saisie, puis ceux qui la contiennent
   const resultats = tousLesUtilisateurs
-    .filter(u => u.pseudo.toLowerCase().includes(filtre))
+    .filter(u => {
+      if (!filtre) return true;
+      return u.pseudo.toLowerCase().includes(filtre);
+    })
+    .sort((a, b) => {
+      if (filtre) {
+        const aDebut = a.pseudo.toLowerCase().startsWith(filtre) ? 0 : 1;
+        const bDebut = b.pseudo.toLowerCase().startsWith(filtre) ? 0 : 1;
+        if (aDebut !== bDebut) return aDebut - bDebut;
+      }
+      return 0;
+    })
     .sort((a, b) => {
       // Les personnes en ligne apparaissent en premier
       const aEnLigne = personnesEnLigne.has(a.pseudo) ? 0 : 1;
@@ -506,7 +518,28 @@ menuSupprimer.addEventListener("click", () => {
   fermerMenuUtilisateur();
 });
 
-rechercheUtilisateur.addEventListener("input", afficherListeUtilisateurs);
+rechercheUtilisateur.addEventListener("input", () => {
+  afficherListeUtilisateurs();
+  listeUtilisateursDiv.classList.remove("cache");
+});
+
+rechercheUtilisateur.addEventListener("focus", () => {
+  fermerTousLesPanneaux(listeUtilisateursDiv);
+  afficherListeUtilisateurs();
+  listeUtilisateursDiv.classList.remove("cache");
+});
+
+rechercheUtilisateur.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    listeUtilisateursDiv.classList.add("cache");
+    rechercheUtilisateur.blur();
+  }
+  // Entrée ouvre directement la première suggestion
+  if (e.key === "Enter") {
+    const premier = listeUtilisateursDiv.querySelector(".item-utilisateur");
+    if (premier) premier.click();
+  }
+});
 
 function construireListeSalons() {
   listeSalonsDiv.innerHTML = "";
@@ -550,6 +583,8 @@ function marquerActif(element) {
 function ouvrirSalon(id) {
   if (!salonsDisponibles[id]) return;
 
+  if (typeof fermerTousLesPanneaux === "function") fermerTousLesPanneaux();
+
   conversationActuelle = { type: "salon", id };
   marquerCommeLu(conversationActuelle);
   titreConversation.textContent = salonsDisponibles[id].nom;
@@ -557,7 +592,6 @@ function ouvrirSalon(id) {
   const item = listeSalonsDiv.querySelector(`[data-salon-id="${id}"]`);
   if (item) marquerActif(item);
 
-  appContainer.classList.add("mobile-vue-chat");
   arreterFrappe();
   majIndicateurFrappe();
   majFondCubes();
@@ -606,6 +640,8 @@ function mettreAJourZoneSaisie() {
 }
 
 function ouvrirConversationPrivee(pseudo) {
+  if (typeof fermerTousLesPanneaux === "function") fermerTousLesPanneaux();
+  rechercheUtilisateur.value = "";
   arreterFrappe();
   conversationActuelle = { type: "prive", id: pseudo };
   marquerCommeLu(conversationActuelle);
@@ -616,7 +652,6 @@ function ouvrirConversationPrivee(pseudo) {
     .find(el => el.dataset.pseudo === pseudo);
   if (item) marquerActif(item);
 
-  appContainer.classList.add("mobile-vue-chat");
   arreterFrappe();
   majIndicateurFrappe();
   majFondCubes();
@@ -952,33 +987,43 @@ persoReinitialiser.addEventListener("click", () => {
 
 chargerPreferences();
 
-// ---------- Barre latérale repliable ----------
+// ---------- Menus déroulants de la barre supérieure ----------
 
-const btnMasquerSidebar = document.getElementById("btn-masquer-sidebar");
-const btnAfficherSidebar = document.getElementById("btn-afficher-sidebar");
+const btnMenuGroupes = document.getElementById("btn-menu-groupes");
+const panneauGroupes = document.getElementById("panneau-groupes");
+const btnMenuCompte = document.getElementById("btn-menu-compte");
+const panneauCompte = document.getElementById("panneau-compte");
 
-function basculerSidebar(masquer) {
-  appContainer.classList.toggle("sidebar-masquee", masquer);
-  btnAfficherSidebar.classList.toggle("cache", !masquer);
-
-  try {
-    localStorage.setItem("sidebarMasquee", masquer ? "1" : "0");
-  } catch (err) {
-    // Stockage indisponible, on ignore
-  }
+function fermerTousLesPanneaux(sauf) {
+  [panneauGroupes, panneauCompte, listeUtilisateursDiv].forEach(p => {
+    if (p && p !== sauf) p.classList.add("cache");
+  });
 }
 
-btnMasquerSidebar.addEventListener("click", () => basculerSidebar(true));
-btnAfficherSidebar.addEventListener("click", () => basculerSidebar(false));
+btnMenuGroupes.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const ouvert = !panneauGroupes.classList.contains("cache");
+  fermerTousLesPanneaux();
+  panneauGroupes.classList.toggle("cache", ouvert);
+});
 
-// Restaure l'état précédent (sur ordinateur seulement)
-try {
-  if (localStorage.getItem("sidebarMasquee") === "1" && window.innerWidth > 700) {
-    basculerSidebar(true);
-  }
-} catch (err) {
-  // Ignoré
-}
+btnMenuCompte.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const ouvert = !panneauCompte.classList.contains("cache");
+  fermerTousLesPanneaux();
+  panneauCompte.classList.toggle("cache", ouvert);
+});
+
+// Un clic ailleurs referme tout
+document.addEventListener("click", (e) => {
+  const dansTopbar = e.target.closest(".topbar");
+  if (!dansTopbar) fermerTousLesPanneaux();
+});
+
+// Échap referme aussi
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") fermerTousLesPanneaux();
+});
 
 // ---------- Limites anti-spam ----------
 
@@ -1359,6 +1404,8 @@ function ouvrirGroupe(id) {
   const groupe = mesGroupes.find(g => g.id === id);
   if (!groupe) return;
 
+  if (typeof fermerTousLesPanneaux === "function") fermerTousLesPanneaux();
+
   arreterFrappe();
   conversationActuelle = { type: "groupe", id };
   marquerCommeLu(conversationActuelle);
@@ -1368,7 +1415,6 @@ function ouvrirGroupe(id) {
   const item = listeGroupes.querySelector(`[data-groupe-id="${id}"]`);
   if (item) marquerActif(item);
 
-  appContainer.classList.add("mobile-vue-chat");
   majFondCubes();
   forumBox.classList.add("cache");
   chatBox.classList.remove("cache");
@@ -2110,9 +2156,7 @@ async function envoyerImage(fichier) {
 function demarrerChat() {
   socket = io();
 
-  retourBtn.addEventListener("click", () => {
-    appContainer.classList.remove("mobile-vue-chat");
-  });
+  if (retourBtn) retourBtn.classList.add("cache");
 
   messageForm.addEventListener("submit", async (event) => {
     event.preventDefault();

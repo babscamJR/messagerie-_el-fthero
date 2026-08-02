@@ -9,61 +9,63 @@
 </head>
 <body>
 
-  <div class="app-container">
+  <!-- Barre supérieure -->
+    <header class="topbar">
+      <h1 id="titre-app" title="Messagerie">
+        <svg class="logo-mini" viewBox="0 0 200 200" aria-hidden="true">
+          <ellipse cx="100" cy="90" rx="62" ry="28" fill="none" stroke="currentColor" stroke-width="11" transform="rotate(-30 100 90)"/>
+          <path d="M100 46 Q107 84 135 90 Q107 96 100 134 Q93 96 65 90 Q93 84 100 46 Z" fill="currentColor"/>
+        </svg>
+      </h1>
 
-    <!-- Barre latérale -->
-    <div class="sidebar">
-      <div class="sidebar-header">
-        <button id="btn-masquer-sidebar" title="Masquer le menu">‹</button>
-        <h1 id="titre-app" title="Messagerie">
-          <svg class="logo-mini" viewBox="0 0 200 200" aria-hidden="true">
-            <ellipse cx="100" cy="90" rx="62" ry="28" fill="none" stroke="#27ae60" stroke-width="11" transform="rotate(-30 100 90)"/>
-            <path d="M100 46 Q107 84 135 90 Q107 96 100 134 Q93 96 65 90 Q93 84 100 46 Z" fill="#2ecc71"/>
-          </svg>
-          <span>Messagerie</span>
-        </h1>
-        <button id="admin-btn" class="cache">🛡️ Modération</button>
-        <button id="btn-mon-mdp" title="Changer mon mot de passe">🔑 Mot de passe</button>
-        <button id="deconnexion-btn" title="Se déconnecter">Déconnexion</button>
-      </div>
+      <nav id="liste-salons" class="nav-salons"></nav>
 
-      <div class="sidebar-section">
-        <div class="sidebar-titre">Salons</div>
-        <div id="liste-salons"></div>
-      </div>
-
-      <div class="sidebar-section">
-        <div class="sidebar-titre">
-          Groupes
-          <button id="btn-creer-groupe" title="Créer un groupe">+</button>
+      <div class="bloc-groupes">
+        <button id="btn-menu-groupes" title="Mes groupes">
+          👥 Groupes <span id="fleche-groupes">▾</span>
+        </button>
+        <div id="panneau-groupes" class="panneau-deroulant cache">
+          <div class="panneau-entete">
+            Mes groupes
+            <button id="btn-creer-groupe" title="Créer un groupe">+</button>
+          </div>
+          <div id="liste-invitations"></div>
+          <div id="liste-groupes"></div>
         </div>
-        <div id="liste-invitations"></div>
-        <div id="liste-groupes"></div>
       </div>
 
-      <div class="sidebar-section">
-        <div class="sidebar-titre">Messages privés</div>
+      <div class="bloc-recherche">
         <input type="text" id="recherche-utilisateur" placeholder="🔍 Rechercher un pseudo..." autocomplete="off">
-        <div id="liste-utilisateurs"></div>
+        <div id="liste-utilisateurs" class="panneau-deroulant cache"></div>
       </div>
-    </div>
+
+      <div class="topbar-actions">
+        <button id="btn-personnalisation" title="Personnaliser l'apparence">
+          <svg viewBox="0 0 200 200" aria-hidden="true">
+            <ellipse cx="100" cy="90" rx="62" ry="28" fill="none" stroke="currentColor" stroke-width="13" transform="rotate(-30 100 90)"/>
+            <path d="M100 46 Q107 84 135 90 Q107 96 100 134 Q93 96 65 90 Q93 84 100 46 Z" fill="currentColor"/>
+          </svg>
+          <span class="plus-perso">+</span>
+        </button>
+
+        <button id="btn-menu-compte" title="Mon compte">⋮</button>
+        <div id="panneau-compte" class="panneau-deroulant cache">
+          <button id="admin-btn" class="cache">🛡️ Modération</button>
+          <button id="btn-mon-mdp">🔑 Mot de passe</button>
+          <button id="deconnexion-btn">Déconnexion</button>
+        </div>
+      </div>
+  </header>
+
+  <div class="app-container">
 
     <!-- Zone de chat -->
     <div class="chat-container">
       <div id="fond-cubes" class="cache" aria-hidden="true"></div>
 
-      <button id="btn-afficher-sidebar" class="cache" title="Afficher le menu">☰</button>
-
       <div class="chat-header">
         <span id="titre-conversation">📻 Radio 1</span>
         <span class="header-actions">
-          <button id="btn-personnalisation" title="Personnaliser l'apparence">
-            <svg viewBox="0 0 200 200" aria-hidden="true">
-              <ellipse cx="100" cy="90" rx="62" ry="28" fill="none" stroke="currentColor" stroke-width="13" transform="rotate(-30 100 90)"/>
-              <path d="M100 46 Q107 84 135 90 Q107 96 100 134 Q93 96 65 90 Q93 84 100 46 Z" fill="currentColor"/>
-            </svg>
-            <span class="plus-perso">+</span>
-          </button>
           <button id="btn-inviter" class="cache" title="Inviter quelqu'un">➕ Inviter</button>
           <button id="btn-quitter-groupe" class="cache" title="Quitter le groupe">Quitter</button>
           <button id="retour-btn" class="mobile-only">← Retour</button>

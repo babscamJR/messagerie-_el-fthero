@@ -1969,13 +1969,300 @@ body {
   }
 }
 
+
+/* ==========================================================
+   BARRE SUPÉRIEURE (remplace la barre latérale)
+   ========================================================== */
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  height: 56px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 500;
+}
+
+.app-container {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  display: flex;
+  width: 100%;
+}
+
+.topbar #titre-app {
+  margin: 0;
+  color: var(--accent);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.topbar .logo-mini {
+  width: 30px;
+  height: 30px;
+}
+
+/* --- Salons en onglets horizontaux --- */
+
+.nav-salons {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  flex-shrink: 1;
+  scrollbar-width: none;
+}
+
+.nav-salons::-webkit-scrollbar {
+  display: none;
+}
+
+.nav-salons .salon-item {
+  padding: 7px 14px;
+  border-radius: 8px;
+  white-space: nowrap;
+  font-size: 13px;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+/* --- Bloc groupes --- */
+
+.bloc-groupes {
+  position: relative;
+  flex-shrink: 0;
+}
+
+#btn-menu-groupes {
+  padding: 7px 13px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+#btn-menu-groupes:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* --- Recherche --- */
+
+.bloc-recherche {
+  position: relative;
+  flex: 1;
+  max-width: 300px;
+  min-width: 120px;
+  margin-left: auto;
+}
+
+.topbar #recherche-utilisateur {
+  width: 100%;
+  margin: 0;
+  padding: 8px 13px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+/* --- Panneaux déroulants --- */
+
+.panneau-deroulant {
+  position: absolute;
+  top: calc(100% + 7px);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  min-width: 240px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 6px;
+  z-index: 900;
+}
+
+.panneau-deroulant.cache {
+  display: none !important;
+}
+
+.bloc-groupes .panneau-deroulant {
+  left: 0;
+}
+
+.bloc-recherche .panneau-deroulant {
+  left: 0;
+  right: 0;
+  min-width: 0;
+}
+
+.topbar-actions .panneau-deroulant {
+  right: 0;
+  min-width: 190px;
+}
+
+.panneau-entete {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 11px 9px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 5px;
+}
+
+.panneau-deroulant .salon-item {
+  padding: 9px 11px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+
+/* --- Actions à droite --- */
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  flex-shrink: 0;
+}
+
+#btn-menu-compte {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 17px;
+  padding: 4px 10px;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+#btn-menu-compte:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+#panneau-compte button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 11px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 7px;
+  margin: 0 0 2px 0;
+}
+
+#panneau-compte button:hover {
+  background: var(--bg-message-other);
+}
+
+#panneau-compte #deconnexion-btn {
+  color: var(--danger);
+  border: none;
+}
+
+#panneau-compte #deconnexion-btn:hover {
+  background: rgba(229, 72, 77, 0.12);
+}
+
+#btn-creer-groupe {
+  width: 22px;
+  height: 22px;
+}
+
+/* La zone de chat occupe désormais toute la largeur */
+
+.chat-container {
+  flex: 1;
+  width: 100%;
+  padding: 18px 24px;
+}
+
+.chat-header {
+  padding-left: 0 !important;
+}
+
+#retour-btn {
+  display: none !important;
+}
+
+/* --- Adaptation mobile --- */
+
+@media (max-width: 700px) {
+  .topbar {
+    height: auto;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .topbar #titre-app .logo-mini {
+    width: 26px;
+    height: 26px;
+  }
+
+  .nav-salons {
+    order: 3;
+    width: 100%;
+    padding-bottom: 2px;
+  }
+
+  .bloc-recherche {
+    max-width: none;
+    flex: 1;
+  }
+
+  .nav-salons .salon-item {
+    font-size: 12px;
+    padding: 6px 11px;
+  }
+
+  .panneau-deroulant {
+    max-height: 60vh;
+  }
+
+  .bloc-groupes .panneau-deroulant {
+    left: auto;
+    right: 0;
+  }
+
+  .chat-container {
+    padding: 12px;
+  }
+}
+
 /* ==========================================================
    CORRECTIF AFFICHAGE — à garder en dernier dans le fichier
    ========================================================== */
 
 /* L'application occupe toute la fenêtre */
 body {
-  display: block;
+  display: flex;
+  flex-direction: column;
   margin: 0;
   height: 100dvh;
   overflow: hidden;
@@ -1984,7 +2271,8 @@ body {
 .app-container {
   width: 100%;
   max-width: none;
-  height: 100dvh;
+  flex: 1;
+  min-height: 0;
   margin: 0;
   border: none;
   border-radius: 0;
