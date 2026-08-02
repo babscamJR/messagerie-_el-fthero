@@ -1832,6 +1832,143 @@ body {
   }
 }
 
+
+/* ---------- Forum Radio 2 : catégories ---------- */
+
+.forum-entete {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+#onglets-categories {
+  display: flex;
+  gap: 5px;
+}
+
+.onglet-cat {
+  padding: 8px 15px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.onglet-cat:hover {
+  border-color: var(--accent-hover);
+  color: var(--text-primary);
+}
+
+.onglet-cat.actif {
+  background: var(--bg-message-mine);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+#tri-publications {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-tri {
+  padding: 5px 11px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.btn-tri:hover {
+  background: var(--bg-message-other);
+}
+
+.btn-tri.actif {
+  color: var(--accent);
+  font-weight: 600;
+  background: var(--bg-message-other);
+}
+
+/* Distinction visuelle entre les deux types */
+
+.publication.cat-post {
+  border-left: 3px solid var(--accent-hover);
+}
+
+.publication.cat-horreur {
+  border-left: 3px solid var(--border-color);
+}
+
+.pub-apercu-texte {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin: 6px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  opacity: 0.9;
+}
+
+/* Choix de catégorie dans la fenêtre de création */
+
+#pub-choix-categorie {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+
+.choix-cat {
+  flex: 1;
+  padding: 9px;
+  background: var(--bg-page);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.choix-cat:hover {
+  border-color: var(--accent-hover);
+}
+
+.choix-cat.actif {
+  background: var(--bg-message-mine);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+@media (max-width: 700px) {
+  .forum-entete {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #onglets-categories {
+    justify-content: center;
+  }
+
+  #tri-publications {
+    justify-content: center;
+  }
+
+  .onglet-cat {
+    flex: 1;
+    text-align: center;
+    font-size: 12px;
+    padding: 7px 10px;
+  }
+}
+
 /* ==========================================================
    CORRECTIF AFFICHAGE — à garder en dernier dans le fichier
    ========================================================== */

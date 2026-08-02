@@ -120,6 +120,11 @@ window.addEventListener("focus", () => {
 });
 window.addEventListener("blur", () => { fenetreActive = false; });
 
+// Forum : catégorie et tri courants
+let categorieActuelle = "horreur";
+let triActuel = "recent";
+let categorieNouvellePub = "horreur";
+
 let publicationOuverte = null;
 let publicationsCache = [];
 let pubFichierSelectionne = null;
@@ -564,7 +569,11 @@ function ouvrirSalon(id) {
     chatBox.classList.add("cache");
     forumBox.classList.remove("cache");
     listePublications.innerHTML = "<p class=\"info-vide\">Chargement...</p>";
-    socket.emit("demander_publications", { salon: id });
+    socket.emit("demander_publications", {
+      salon: id,
+      categorie: categorieActuelle,
+      tri: triActuel
+    });
   } else {
     forumBox.classList.add("cache");
     chatBox.classList.remove("cache");
@@ -623,6 +632,26 @@ function ouvrirConversationPrivee(pseudo) {
     messagesDiv.innerHTML = "";
     socket.emit("demander_historique_prive", { destinataire: pseudo });
   }
+}
+
+// Adapte les libellés du formulaire selon la catégorie choisie
+function majFormulairePublication() {
+  const modalTitre = document.getElementById("pub-modal-titre");
+  const estHorreur = categorieNouvellePub === "horreur";
+
+  if (modalTitre) {
+    modalTitre.textContent = estHorreur ? "✍️ Nouvelle histoire" : "💬 Nouveau post";
+  }
+
+  pubTitre.placeholder = estHorreur
+    ? "Titre de ton histoire"
+    : "Titre (facultatif)";
+
+  pubContenu.placeholder = estHorreur
+    ? "Raconte ton histoire..."
+    : "Quoi de neuf ?";
+
+  pubContenu.rows = estHorreur ? 9 : 5;
 }
 
 function reinitialiserImagePub() {
@@ -1607,6 +1636,7 @@ function afficherPublications(publications) {
 function creerCartePublication(pub) {
   const carte = document.createElement("div");
   carte.classList.add("publication");
+  carte.classList.add("cat-" + (pub.categorie || "horreur"));
   carte.dataset.pubId = pub.id;
 
   // Colonne de vote
@@ -1641,15 +1671,29 @@ function creerCartePublication(pub) {
   const corps = document.createElement("div");
   corps.classList.add("pub-corps");
 
-  const titre = document.createElement("div");
-  titre.classList.add("pub-titre");
-  titre.textContent = pub.titre;
+  if (pub.titre) {
+    const titre = document.createElement("div");
+    titre.classList.add("pub-titre");
+    titre.textContent = pub.titre;
+    corps.appendChild(titre);
+  }
+
+  // Pour les posts, on montre un aperçu du contenu directement dans la carte
+  if ((pub.categorie === "post") && pub.contenu) {
+    const apercu = document.createElement("div");
+    apercu.classList.add("pub-apercu-texte");
+    apercu.textContent = pub.contenu.length > 260
+      ? pub.contenu.slice(0, 260) + "…"
+      : pub.contenu;
+    corps.appendChild(apercu);
+  }
 
   const meta = document.createElement("div");
   meta.classList.add("pub-meta");
-  meta.textContent = `par ${pub.auteur} · 💬 ${pub.nb_commentaires}`;
+  const quand = typeof formaterDate === "function" ? formaterDate(pub.date) : "";
+  meta.textContent = `par ${pub.auteur}${quand ? " · " + quand : ""} · 💬 ${pub.nb_commentaires}`;
 
-  corps.append(titre, meta);
+  corps.appendChild(meta);
 
   if (pub.image_url) {
     const vignette = document.createElement("img");
@@ -2316,6 +2360,9 @@ function demarrerChat() {
   });
 
   socket.on("nouvelle_publication", (data) => {
+    // On n'ajoute que si la catégorie affichée correspond
+    if (data.categorie && data.categorie !== categorieActuelle) return;
+
     if (conversationActuelle.type === "salon" && conversationActuelle.id === data.salon) {
       publicationsCache.unshift(data.publication);
 
@@ -2381,11 +2428,68 @@ function demarrerChat() {
 
   // ----- Interactions du forum -----
 
+  // Onglets de catégorie
+  document.querySelectorAll(".onglet-cat").forEach(onglet => {
+    onglet.addEventListener("click", () => {
+      document.querySelectorAll(".onglet-cat").forEach(o => o.classList.remove("actif"));
+      onglet.classList.add("actif");
+
+      categorieActuelle = onglet.dataset.cat;
+      categorieNouvellePub = categorieActuelle;
+
+      btnNouvellePub.textContent = categorieActuelle === "horreur"
+        ? "✍️ Écrire une histoire"
+        : "💬 Publier un post";
+
+      listePublications.innerHTML = "<p class=\"info-vide\">Chargement...</p>";
+      socket.emit("demander_publications", {
+        salon: "radio2",
+        categorie: categorieActuelle,
+        tri: triActuel
+      });
+    });
+  });
+
+  // Boutons de tri
+  document.querySelectorAll(".btn-tri").forEach(bouton => {
+    bouton.addEventListener("click", () => {
+      document.querySelectorAll(".btn-tri").forEach(b => b.classList.remove("actif"));
+      bouton.classList.add("actif");
+
+      triActuel = bouton.dataset.tri;
+
+      listePublications.innerHTML = "<p class=\"info-vide\">Chargement...</p>";
+      socket.emit("demander_publications", {
+        salon: "radio2",
+        categorie: categorieActuelle,
+        tri: triActuel
+      });
+    });
+  });
+
+  // Choix de la catégorie dans la fenêtre de création
+  document.querySelectorAll(".choix-cat").forEach(bouton => {
+    bouton.addEventListener("click", () => {
+      document.querySelectorAll(".choix-cat").forEach(b => b.classList.remove("actif"));
+      bouton.classList.add("actif");
+      categorieNouvellePub = bouton.dataset.cat;
+      majFormulairePublication();
+    });
+  });
+
   btnNouvellePub.addEventListener("click", () => {
     pubTitre.value = "";
     pubContenu.value = "";
     pubErreur.textContent = "";
     reinitialiserImagePub();
+
+    // La catégorie du formulaire suit l'onglet actif
+    categorieNouvellePub = categorieActuelle;
+    document.querySelectorAll(".choix-cat").forEach(b => {
+      b.classList.toggle("actif", b.dataset.cat === categorieNouvellePub);
+    });
+    majFormulairePublication();
+
     modalPublication.classList.remove("cache");
     pubTitre.focus();
   });
@@ -2429,8 +2533,14 @@ function demarrerChat() {
 
   pubPublier.addEventListener("click", async () => {
     const titre = pubTitre.value.trim();
-    if (!titre) {
-      pubErreur.textContent = "Le titre est obligatoire.";
+
+    if (categorieNouvellePub === "horreur" && !titre) {
+      pubErreur.textContent = "Le titre est obligatoire pour une histoire.";
+      return;
+    }
+
+    if (categorieNouvellePub === "post" && !titre && !pubContenu.value.trim() && !pubFichierSelectionne) {
+      pubErreur.textContent = "Ton post est vide.";
       return;
     }
 
@@ -2456,6 +2566,7 @@ function demarrerChat() {
 
     socket.emit("creer_publication", {
       salon: conversationActuelle.id,
+      categorie: categorieNouvellePub,
       titre,
       contenu: pubContenu.value.trim(),
       imageUrl

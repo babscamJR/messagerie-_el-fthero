@@ -83,6 +83,12 @@ setInterval(() => {
   });
 }, 15 * 60 * 1000);
 
+// Catégories du forum Radio 2
+const CATEGORIES = {
+  horreur: { nom: "👻 Horreur & Paranormal", icone: "👻" },
+  post:    { nom: "💬 Posts", icone: "💬" }
+};
+
 // Salons publics disponibles
 // adminSeul: true => seuls les administrateurs peuvent y écrire
 const SALONS = {
@@ -1132,23 +1138,35 @@ io.on("connection", async (socket) => {
   // Charge la liste des publications avec leur score et nombre de commentaires
   socket.on("demander_publications", async (data) => {
     const salon = data.salon || "radio2";
+    const categorie = CATEGORIES[data.categorie] ? data.categorie : "horreur";
+    const tri = data.tri === "populaire" ? "populaire" : "recent";
+
+    // Tri : les plus récents, ou les mieux notés
+    const ordre = tri === "populaire"
+      ? "score DESC, p.id DESC"
+      : "p.id DESC";
 
     try {
       const resultat = await pool.query(`
         SELECT
-          p.id, p.auteur, p.titre, p.contenu, p.image_url, p.date,
+          p.id, p.auteur, p.titre, p.contenu, p.image_url, p.date, p.categorie,
           COALESCE(SUM(v.valeur), 0)::int AS score,
           COALESCE(MAX(CASE WHEN v.pseudo = $2 THEN v.valeur END), 0)::int AS mon_vote,
           (SELECT COUNT(*) FROM commentaires c WHERE c.publication_id = p.id)::int AS nb_commentaires
         FROM publications p
         LEFT JOIN votes v ON v.publication_id = p.id
-        WHERE p.salon = $1
+        WHERE p.salon = $1 AND p.categorie = $3
         GROUP BY p.id
-        ORDER BY p.id DESC
+        ORDER BY ${ordre}
         LIMIT 50
-      `, [salon, monPseudo]);
+      `, [salon, monPseudo, categorie]);
 
-      socket.emit("liste_publications", { salon, publications: resultat.rows });
+      socket.emit("liste_publications", {
+        salon,
+        categorie,
+        tri,
+        publications: resultat.rows
+      });
     } catch (err) {
       console.error("Erreur liste publications :", err);
     }
@@ -1160,9 +1178,16 @@ io.on("connection", async (socket) => {
     const contenu = (data.contenu || "").trim();
     const imageUrl = data.imageUrl || null;
     const salon = data.salon || "radio2";
+    const categorie = CATEGORIES[data.categorie] ? data.categorie : "horreur";
 
-    if (!titre) {
-      socket.emit("erreur_envoi", { message: "Le titre est obligatoire." });
+    // Le titre est obligatoire pour une histoire, facultatif pour un post
+    if (categorie === "horreur" && !titre) {
+      socket.emit("erreur_envoi", { message: "Le titre est obligatoire pour une histoire." });
+      return;
+    }
+
+    if (categorie === "post" && !titre && !contenu && !imageUrl) {
+      socket.emit("erreur_envoi", { message: "Ton post est vide." });
       return;
     }
 
@@ -1180,10 +1205,10 @@ io.on("connection", async (socket) => {
 
     try {
       const resultat = await pool.query(
-        `INSERT INTO publications (salon, auteur, titre, contenu, image_url)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, auteur, titre, contenu, image_url, date`,
-        [salon, monPseudo, titre, contenu || null, imageUrl]
+        `INSERT INTO publications (salon, auteur, titre, contenu, image_url, categorie)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, auteur, titre, contenu, image_url, date, categorie`,
+        [salon, monPseudo, titre || "", contenu || null, imageUrl, categorie]
       );
 
       const publication = resultat.rows[0];
@@ -1191,7 +1216,7 @@ io.on("connection", async (socket) => {
       publication.mon_vote = 0;
       publication.nb_commentaires = 0;
 
-      io.emit("nouvelle_publication", { salon, publication });
+      io.emit("nouvelle_publication", { salon, categorie, publication });
     } catch (err) {
       console.error("Erreur création publication :", err);
     }

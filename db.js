@@ -81,7 +81,11 @@ async function initialiserBase() {
     );
   `);
 
+  // Catégorie des publications : "horreur" ou "post"
+  await pool.query(`ALTER TABLE publications ADD COLUMN IF NOT EXISTS categorie VARCHAR(20) DEFAULT 'horreur';`);
+
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_pub_salon ON publications (salon);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_pub_categorie ON publications (categorie);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_com_pub ON commentaires (publication_id);`);
 
   // ----- Groupes -----

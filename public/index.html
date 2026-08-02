@@ -72,6 +72,17 @@
 
       <!-- Vue forum (Radio 2) -->
       <div id="forum-box" class="cache">
+        <div class="forum-entete">
+          <div id="onglets-categories">
+            <button class="onglet-cat actif" data-cat="horreur">👻 Horreur</button>
+            <button class="onglet-cat" data-cat="post">💬 Posts</button>
+          </div>
+          <div id="tri-publications">
+            <button class="btn-tri actif" data-tri="recent">Récents</button>
+            <button class="btn-tri" data-tri="populaire">Populaires</button>
+          </div>
+        </div>
+
         <button id="btn-nouvelle-pub">✍️ Écrire une histoire</button>
         <div id="liste-publications"></div>
       </div>
@@ -116,7 +127,13 @@
   <!-- Fenêtre : créer une publication -->
   <div id="modal-publication" class="modal cache">
     <div class="modal-contenu large">
-      <h2>✍️ Nouvelle histoire</h2>
+      <h2 id="pub-modal-titre">✍️ Nouvelle histoire</h2>
+
+      <div id="pub-choix-categorie">
+        <button class="choix-cat actif" data-cat="horreur">👻 Histoire d'horreur</button>
+        <button class="choix-cat" data-cat="post">💬 Post</button>
+      </div>
+
       <input type="text" id="pub-titre" placeholder="Titre de ton histoire" maxlength="200">
       <textarea id="pub-contenu" placeholder="Raconte ton histoire..." rows="7"></textarea>
       <input type="file" id="pub-image" accept="image/*" hidden>
