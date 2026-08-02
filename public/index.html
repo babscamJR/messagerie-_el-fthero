@@ -34,6 +34,20 @@
         </div>
       </div>
 
+      <div class="bloc-notifications">
+        <button id="btn-notifications" title="Notifications">
+          🔔
+          <span id="badge-notifications" class="cache">0</span>
+        </button>
+        <div id="panneau-notifications" class="panneau-deroulant cache">
+          <div class="panneau-entete">
+            Notifications
+            <button id="tout-marquer-lu" title="Tout marquer comme lu">Tout lire</button>
+          </div>
+          <div id="liste-notifications"></div>
+        </div>
+      </div>
+
       <div class="bloc-recherche">
         <input type="text" id="recherche-utilisateur" placeholder="🔍 Rechercher un pseudo..." autocomplete="off">
         <div id="liste-utilisateurs" class="panneau-deroulant cache"></div>

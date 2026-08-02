@@ -2069,9 +2069,8 @@ body {
 .bloc-recherche {
   position: relative;
   flex: 1;
-  max-width: 300px;
+  max-width: 280px;
   min-width: 120px;
-  margin-left: auto;
 }
 
 .topbar #recherche-utilisateur {
@@ -2252,6 +2251,164 @@ body {
 
   .chat-container {
     padding: 12px;
+  }
+}
+
+
+/* ---------- Centre de notifications ---------- */
+
+.bloc-notifications {
+  position: relative;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+#btn-notifications {
+  position: relative;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 6px 11px;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1.1;
+}
+
+#btn-notifications:hover {
+  border-color: var(--accent);
+}
+
+#btn-notifications.a-des-notifs {
+  border-color: var(--accent);
+  animation: pulse-cloche 2.4s ease-in-out infinite;
+}
+
+@keyframes pulse-cloche {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
+  50%      { box-shadow: 0 0 0 4px rgba(46, 204, 113, 0.14); }
+}
+
+#badge-notifications {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: var(--danger);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+#badge-notifications.cache {
+  display: none !important;
+}
+
+.bloc-notifications .panneau-deroulant {
+  right: 0;
+  left: auto;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+}
+
+#tout-marquer-lu {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 5px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+#tout-marquer-lu:hover {
+  background: var(--bg-message-other);
+}
+
+.notification {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 11px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.notification:hover {
+  background: var(--bg-message-other);
+}
+
+.notif-icone {
+  font-size: 17px;
+  flex-shrink: 0;
+  line-height: 1.3;
+}
+
+.notif-corps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.notif-titre {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notif-texte {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.notif-compteur {
+  background: var(--accent);
+  color: var(--bg-page);
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.notification.notif-invitation {
+  border-left: 2px solid var(--accent);
+}
+
+.notification.notif-moderation {
+  border-left: 2px solid var(--danger);
+}
+
+@media (max-width: 700px) {
+  .bloc-notifications {
+    margin-left: 0;
+  }
+
+  .bloc-notifications .panneau-deroulant {
+    width: calc(100vw - 24px);
   }
 }
 

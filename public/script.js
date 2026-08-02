@@ -181,6 +181,15 @@ async function verifierConnexion() {
 
   if (jeSuisAdmin) {
     adminBtn.classList.remove("cache");
+
+    // Compte les demandes de groupe en attente pour la cloche
+    fetch("/admin/groupes-en-attente")
+      .then(r => r.json())
+      .then(d => {
+        groupesAValider = (d.groupes || []).length;
+        if (typeof majNotifications === "function") majNotifications();
+      })
+      .catch(() => {});
   }
 
   // Mot de passe réinitialisé par un modérateur : changement obligatoire
@@ -987,6 +996,154 @@ persoReinitialiser.addEventListener("click", () => {
 
 chargerPreferences();
 
+// ---------- Centre de notifications ----------
+
+const btnNotifications = document.getElementById("btn-notifications");
+const badgeNotifications = document.getElementById("badge-notifications");
+const panneauNotifications = document.getElementById("panneau-notifications");
+const listeNotifications = document.getElementById("liste-notifications");
+const toutMarquerLu = document.getElementById("tout-marquer-lu");
+
+// Invitations et demandes en attente, alimentées par les événements socket
+let invitationsEnAttente = [];
+let groupesAValider = 0;
+
+// Rassemble toutes les sources de notification
+function collecterNotifications() {
+  const liste = [];
+
+  // Invitations de groupe
+  invitationsEnAttente.forEach(inv => {
+    liste.push({
+      type: "invitation",
+      icone: "👥",
+      titre: "Invitation à un groupe",
+      texte: `${inv.invite_par} t'invite dans « ${inv.titre} »`,
+      action: () => {
+        fermerTousLesPanneaux();
+        panneauGroupes.classList.remove("cache");
+      }
+    });
+  });
+
+  // Demandes de validation, réservées aux administrateurs
+  if (jeSuisAdmin && groupesAValider > 0) {
+    liste.push({
+      type: "moderation",
+      icone: "⏳",
+      titre: "Groupes à valider",
+      texte: `${groupesAValider} groupe(s) en attente de ta validation`,
+      action: () => {
+        fermerTousLesPanneaux();
+        modalGroupesAttente.classList.remove("cache");
+        chargerGroupesEnAttente();
+      }
+    });
+  }
+
+  // Messages non lus
+  Object.keys(nonLus).forEach(cle => {
+    const nombre = nonLus[cle];
+    if (!nombre) return;
+
+    const separateur = cle.indexOf(":");
+    const type = cle.slice(0, separateur);
+    const id = cle.slice(separateur + 1);
+
+    let icone = "💬";
+    let titre = id;
+
+    if (type === "salon") {
+      const salon = salonsDisponibles[id];
+      icone = "📻";
+      titre = salon ? salon.nom : id;
+    } else if (type === "groupe") {
+      const groupe = mesGroupes.find(g => String(g.id) === String(id));
+      icone = "👥";
+      titre = groupe ? groupe.titre : "Groupe";
+    } else {
+      icone = "✉️";
+      titre = id;
+    }
+
+    liste.push({
+      type: "message",
+      icone,
+      titre,
+      texte: `${nombre} nouveau${nombre > 1 ? "x" : ""} message${nombre > 1 ? "s" : ""}`,
+      nombre,
+      action: () => {
+        fermerTousLesPanneaux();
+        if (type === "salon") ouvrirSalon(id);
+        else if (type === "groupe") ouvrirGroupe(parseInt(id, 10));
+        else ouvrirConversationPrivee(id);
+      }
+    });
+  });
+
+  return liste;
+}
+
+function majNotifications() {
+  const liste = collecterNotifications();
+  const total = liste.reduce((somme, n) => somme + (n.nombre || 1), 0);
+
+  // Pastille sur la cloche
+  if (total > 0) {
+    badgeNotifications.textContent = total > 99 ? "99+" : total;
+    badgeNotifications.classList.remove("cache");
+    btnNotifications.classList.add("a-des-notifs");
+  } else {
+    badgeNotifications.classList.add("cache");
+    btnNotifications.classList.remove("a-des-notifs");
+  }
+
+  // Contenu du panneau
+  listeNotifications.innerHTML = "";
+
+  if (liste.length === 0) {
+    listeNotifications.innerHTML = "<p class=\"info-vide\">Aucune notification</p>";
+    return;
+  }
+
+  liste.forEach(n => {
+    const item = document.createElement("button");
+    item.classList.add("notification", "notif-" + n.type);
+
+    const icone = document.createElement("span");
+    icone.classList.add("notif-icone");
+    icone.textContent = n.icone;
+
+    const corps = document.createElement("span");
+    corps.classList.add("notif-corps");
+
+    const titre = document.createElement("span");
+    titre.classList.add("notif-titre");
+    titre.textContent = n.titre;
+
+    const texte = document.createElement("span");
+    texte.classList.add("notif-texte");
+    texte.textContent = n.texte;
+
+    corps.append(titre, texte);
+    item.append(icone, corps);
+
+    if (n.nombre) {
+      const compteur = document.createElement("span");
+      compteur.classList.add("notif-compteur");
+      compteur.textContent = n.nombre;
+      item.appendChild(compteur);
+    }
+
+    item.addEventListener("click", () => {
+      panneauNotifications.classList.add("cache");
+      n.action();
+    });
+
+    listeNotifications.appendChild(item);
+  });
+}
+
 // ---------- Menus déroulants de la barre supérieure ----------
 
 const btnMenuGroupes = document.getElementById("btn-menu-groupes");
@@ -995,7 +1152,7 @@ const btnMenuCompte = document.getElementById("btn-menu-compte");
 const panneauCompte = document.getElementById("panneau-compte");
 
 function fermerTousLesPanneaux(sauf) {
-  [panneauGroupes, panneauCompte, listeUtilisateursDiv].forEach(p => {
+  [panneauGroupes, panneauCompte, panneauNotifications, listeUtilisateursDiv].forEach(p => {
     if (p && p !== sauf) p.classList.add("cache");
   });
 }
@@ -1005,6 +1162,24 @@ btnMenuGroupes.addEventListener("click", (e) => {
   const ouvert = !panneauGroupes.classList.contains("cache");
   fermerTousLesPanneaux();
   panneauGroupes.classList.toggle("cache", ouvert);
+});
+
+btnNotifications.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const ouvert = !panneauNotifications.classList.contains("cache");
+  fermerTousLesPanneaux();
+  if (!ouvert) {
+    majNotifications();
+    panneauNotifications.classList.remove("cache");
+  }
+});
+
+toutMarquerLu.addEventListener("click", (e) => {
+  e.stopPropagation();
+  Object.keys(nonLus).forEach(cle => delete nonLus[cle]);
+  rafraichirBadges();
+  majTitreOnglet();
+  majNotifications();
 });
 
 btnMenuCompte.addEventListener("click", (e) => {
@@ -1238,6 +1413,7 @@ function poserBadge(element, nombre) {
 
 // Affiche le total dans le titre de l'onglet
 function majTitreOnglet() {
+  if (typeof majNotifications === "function") majNotifications();
   const total = Object.values(nonLus).reduce((a, b) => a + b, 0);
   document.title = total > 0
     ? `(${total}) Ma Messagerie`
@@ -1325,6 +1501,8 @@ messageInput.addEventListener("input", () => {
 
 function afficherMesGroupes(donnees) {
   mesGroupes = donnees.groupes;
+  invitationsEnAttente = donnees.invitations || [];
+  if (typeof majNotifications === "function") majNotifications();
 
   // Invitations en attente
   listeInvitations.innerHTML = "";
@@ -1507,6 +1685,8 @@ async function repondreGroupe(id, accepter, titre) {
 
   const data = await reponse.json();
   if (data.succes) {
+    groupesAValider = Math.max(0, groupesAValider - 1);
+    majNotifications();
     chargerGroupesEnAttente();
   } else {
     alert(data.erreur || "Erreur.");
@@ -2321,6 +2501,15 @@ function demarrerChat() {
   });
 
   socket.on("demande_groupe_en_attente", () => {
+    if (jeSuisAdmin) {
+      fetch("/admin/groupes-en-attente")
+        .then(r => r.json())
+        .then(d => {
+          groupesAValider = (d.groupes || []).length;
+          majNotifications();
+        })
+        .catch(() => {});
+    }
     if (jeSuisAdmin && !modalGroupesAttente.classList.contains("cache")) {
       chargerGroupesEnAttente();
     }
