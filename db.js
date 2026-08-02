@@ -142,6 +142,7 @@ async function initialiserBase() {
   await pool.query(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;`);
   await pool.query(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS is_banni BOOLEAN DEFAULT FALSE;`);
   await pool.query(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS doit_changer_mdp BOOLEAN DEFAULT FALSE;`);
+  await pool.query(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS avatar TEXT;`);
 
   // Ajoute les colonnes image si les tables existaient déjà sans elles
   await pool.query(`ALTER TABLE messages_publics ADD COLUMN IF NOT EXISTS image_url TEXT;`);

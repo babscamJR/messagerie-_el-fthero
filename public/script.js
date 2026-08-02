@@ -197,8 +197,13 @@ async function verifierConnexion() {
     setTimeout(() => ouvrirChangementMdp(true), 300);
   }
 
+  monPseudoAffiche.textContent = monPseudo;
+  apercuMonAvatar.dataset.avatarDe = monPseudo;
+
   demarrerChat();
   chargerListeUtilisateurs();
+  chargerAvatars();
+  afficherConversations();
 }
 
 // ---------- MODÉRATION ----------
@@ -651,14 +656,17 @@ function mettreAJourZoneSaisie() {
 function ouvrirConversationPrivee(pseudo) {
   if (typeof fermerTousLesPanneaux === "function") fermerTousLesPanneaux();
   rechercheUtilisateur.value = "";
+  conversationsOuvertes.add(pseudo);
+  if (typeof afficherConversations === "function") afficherConversations();
   arreterFrappe();
   conversationActuelle = { type: "prive", id: pseudo };
   marquerCommeLu(conversationActuelle);
   titreConversation.textContent = "👤 " + pseudo;
   majIndicateurFrappe();
 
-  const item = [...document.querySelectorAll("#liste-utilisateurs .salon-item")]
-    .find(el => el.dataset.pseudo === pseudo);
+  const item = listeConversations
+    ? [...listeConversations.querySelectorAll(".item-conversation")].find(el => el.dataset.pseudo === pseudo)
+    : null;
   if (item) marquerActif(item);
 
   arreterFrappe();
@@ -995,6 +1003,383 @@ persoReinitialiser.addEventListener("click", () => {
 });
 
 chargerPreferences();
+
+// ---------- Avatars géométriques ----------
+
+const FORMES_FOND = [
+  { id: "cercle",  nom: "Cercle" },
+  { id: "carre",   nom: "Carré" },
+  { id: "arrondi", nom: "Arrondi" },
+  { id: "hexa",    nom: "Hexagone" },
+  { id: "bouclier", nom: "Bouclier" }
+];
+
+const FORMES_PRINCIPALES = [
+  { id: "triangle", nom: "Triangle" },
+  { id: "cercle",   nom: "Cercle" },
+  { id: "carre",    nom: "Carré" },
+  { id: "losange",  nom: "Losange" },
+  { id: "etoile",   nom: "Étoile" },
+  { id: "anneau",   nom: "Anneau" },
+  { id: "croix",    nom: "Croix" },
+  { id: "eclair",   nom: "Éclair" },
+  { id: "chevrons", nom: "Chevrons" },
+  { id: "lune",     nom: "Lune" },
+  { id: "goutte",   nom: "Goutte" },
+  { id: "aucune",   nom: "Aucune" }
+];
+
+const FORMES_ACCENT = [
+  { id: "aucun",    nom: "Aucun" },
+  { id: "point",    nom: "Point" },
+  { id: "trois",    nom: "Trois points" },
+  { id: "barre",    nom: "Barre" },
+  { id: "orbite",   nom: "Orbite" },
+  { id: "etincelle", nom: "Étincelle" }
+];
+
+const PALETTE = [
+  "#2ecc71", "#27ae60", "#3b9eff", "#2d7fd4", "#a855f7", "#7c3aed",
+  "#f472b6", "#db2777", "#fb923c", "#ea580c", "#ef4444", "#b91c1c",
+  "#22d3ee", "#0891b2", "#eab308", "#ca8a04", "#e6edf3", "#8b949e",
+  "#30363d", "#0d1117"
+];
+
+const AVATAR_DEFAUT = {
+  fond: "cercle",
+  cFond: "#1a4d2e",
+  forme: "triangle",
+  cForme: "#2ecc71",
+  accent: "aucun",
+  cAccent: "#e6edf3",
+  rotation: 0
+};
+
+// Avatars de tout le monde, indexés par pseudo
+const avatarsConnus = {};
+
+// Construit le SVG d'un avatar à partir de sa configuration
+function dessinerAvatar(config, taille) {
+  const a = { ...AVATAR_DEFAUT, ...(config || {}) };
+  const t = taille || 34;
+
+  let fond = "";
+  switch (a.fond) {
+    case "carre":
+      fond = `<rect x="0" y="0" width="100" height="100" fill="${a.cFond}"/>`;
+      break;
+    case "arrondi":
+      fond = `<rect x="0" y="0" width="100" height="100" rx="24" fill="${a.cFond}"/>`;
+      break;
+    case "hexa":
+      fond = `<polygon points="50,2 93,26 93,74 50,98 7,74 7,26" fill="${a.cFond}"/>`;
+      break;
+    case "bouclier":
+      fond = `<path d="M50 2 L94 20 V56 Q94 84 50 98 Q6 84 6 56 V20 Z" fill="${a.cFond}"/>`;
+      break;
+    default:
+      fond = `<circle cx="50" cy="50" r="49" fill="${a.cFond}"/>`;
+  }
+
+  let forme = "";
+  switch (a.forme) {
+    case "triangle":
+      forme = `<polygon points="50,22 76,70 24,70" fill="${a.cForme}"/>`;
+      break;
+    case "cercle":
+      forme = `<circle cx="50" cy="50" r="25" fill="${a.cForme}"/>`;
+      break;
+    case "carre":
+      forme = `<rect x="27" y="27" width="46" height="46" rx="5" fill="${a.cForme}"/>`;
+      break;
+    case "losange":
+      forme = `<polygon points="50,20 78,50 50,80 22,50" fill="${a.cForme}"/>`;
+      break;
+    case "etoile":
+      forme = `<path d="M50 18 L58 42 L83 42 L63 57 L70 81 L50 66 L30 81 L37 57 L17 42 L42 42 Z" fill="${a.cForme}"/>`;
+      break;
+    case "anneau":
+      forme = `<circle cx="50" cy="50" r="25" fill="none" stroke="${a.cForme}" stroke-width="11"/>`;
+      break;
+    case "croix":
+      forme = `<path d="M42 20 h16 v22 h22 v16 h-22 v22 h-16 v-22 h-22 v-16 h22 Z" fill="${a.cForme}"/>`;
+      break;
+    case "eclair":
+      forme = `<path d="M58 16 L30 55 H46 L40 84 L70 44 H54 Z" fill="${a.cForme}"/>`;
+      break;
+    case "chevrons":
+      forme = `<path d="M28 30 L50 50 L28 70 M52 30 L74 50 L52 70" fill="none" stroke="${a.cForme}" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>`;
+      break;
+    case "lune":
+      forme = `<path d="M62 20 A32 32 0 1 0 62 80 A26 26 0 1 1 62 20 Z" fill="${a.cForme}"/>`;
+      break;
+    case "goutte":
+      forme = `<path d="M50 18 Q74 46 74 60 A24 24 0 0 1 26 60 Q26 46 50 18 Z" fill="${a.cForme}"/>`;
+      break;
+  }
+
+  let accent = "";
+  switch (a.accent) {
+    case "point":
+      accent = `<circle cx="76" cy="26" r="9" fill="${a.cAccent}"/>`;
+      break;
+    case "trois":
+      accent = `<circle cx="26" cy="80" r="5" fill="${a.cAccent}"/>` +
+               `<circle cx="42" cy="86" r="5" fill="${a.cAccent}"/>` +
+               `<circle cx="58" cy="80" r="5" fill="${a.cAccent}"/>`;
+      break;
+    case "barre":
+      accent = `<rect x="18" y="82" width="64" height="7" rx="3.5" fill="${a.cAccent}"/>`;
+      break;
+    case "orbite":
+      accent = `<ellipse cx="50" cy="50" rx="42" ry="17" fill="none" stroke="${a.cAccent}" stroke-width="5" transform="rotate(-28 50 50)"/>`;
+      break;
+    case "etincelle":
+      accent = `<path d="M78 14 L81 25 L92 28 L81 31 L78 42 L75 31 L64 28 L75 25 Z" fill="${a.cAccent}"/>`;
+      break;
+  }
+
+  const pivot = a.rotation ? ` transform="rotate(${a.rotation} 50 50)"` : "";
+
+  return `<svg class="avatar" width="${t}" height="${t}" viewBox="0 0 100 100" aria-hidden="true">` +
+         fond + `<g${pivot}>` + forme + `</g>` + accent + `</svg>`;
+}
+
+// Crée un élément avatar prêt à insérer
+function creerAvatar(pseudo, taille) {
+  const conteneur = document.createElement("span");
+  conteneur.classList.add("avatar-conteneur");
+  conteneur.innerHTML = dessinerAvatar(avatarsConnus[pseudo], taille);
+  return conteneur;
+}
+
+async function chargerAvatars() {
+  try {
+    const reponse = await fetch("/avatars");
+    const data = await reponse.json();
+    Object.assign(avatarsConnus, data.avatars || {});
+    rafraichirAvatarsAffiches();
+  } catch (err) {
+    console.error("Erreur chargement avatars :", err);
+  }
+}
+
+// Remet à jour tous les avatars déjà affichés à l'écran
+function rafraichirAvatarsAffiches() {
+  document.querySelectorAll("[data-avatar-de]").forEach(el => {
+    const pseudo = el.dataset.avatarDe;
+    const taille = parseInt(el.dataset.avatarTaille, 10) || 34;
+    el.innerHTML = dessinerAvatar(avatarsConnus[pseudo], taille);
+  });
+}
+
+// ---------- Barre latérale : conversations privées ----------
+
+const listeConversations = document.getElementById("liste-conversations");
+const monPseudoAffiche = document.getElementById("mon-pseudo-affiche");
+const apercuMonAvatar = document.getElementById("apercu-mon-avatar");
+
+// Pseudos avec qui une conversation est déjà engagée
+const conversationsOuvertes = new Set();
+
+function afficherConversations() {
+  if (!listeConversations) return;
+
+  listeConversations.innerHTML = "";
+
+  // On liste ceux avec qui on a échangé, plus ceux qui ont des non-lus
+  const pseudos = new Set(conversationsOuvertes);
+  Object.keys(nonLus).forEach(cle => {
+    if (cle.startsWith("prive:")) pseudos.add(cle.slice(6));
+  });
+
+  const tries = [...pseudos].sort((a, b) => {
+    const aEnLigne = personnesEnLigne.has(a) ? 0 : 1;
+    const bEnLigne = personnesEnLigne.has(b) ? 0 : 1;
+    if (aEnLigne !== bEnLigne) return aEnLigne - bEnLigne;
+    return a.localeCompare(b);
+  });
+
+  if (tries.length === 0) {
+    listeConversations.innerHTML =
+      "<p class=\"info-vide\">Utilise la recherche en haut pour démarrer une conversation.</p>";
+    return;
+  }
+
+  tries.forEach(pseudo => {
+    const item = document.createElement("div");
+    item.classList.add("salon-item", "item-conversation");
+    item.dataset.pseudo = pseudo;
+
+    const avatar = document.createElement("span");
+    avatar.classList.add("avatar-conteneur");
+    avatar.dataset.avatarDe = pseudo;
+    avatar.dataset.avatarTaille = "30";
+    avatar.innerHTML = dessinerAvatar(avatarsConnus[pseudo], 30);
+
+    const bloc = document.createElement("span");
+    bloc.classList.add("conv-infos");
+
+    const nom = document.createElement("span");
+    nom.classList.add("nom-utilisateur");
+    nom.textContent = pseudo;
+
+    const etat = document.createElement("span");
+    etat.classList.add("conv-etat");
+    etat.textContent = personnesEnLigne.has(pseudo) ? "En ligne" : "Hors ligne";
+    if (personnesEnLigne.has(pseudo)) etat.classList.add("actif");
+
+    bloc.append(nom, etat);
+    item.append(avatar, bloc);
+
+    item.addEventListener("click", () => ouvrirConversationPrivee(pseudo));
+
+    if (jeSuisAdmin) {
+      const infos = tousLesUtilisateurs.find(u => u.pseudo === pseudo);
+      if (infos && !infos.admin) {
+        item.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          ouvrirMenuUtilisateur(infos, e.clientX, e.clientY);
+        });
+      }
+    }
+
+    listeConversations.appendChild(item);
+  });
+
+  if (typeof rafraichirBadges === "function") rafraichirBadges();
+}
+
+// ---------- Atelier de création d'icône ----------
+
+const btnMonAvatar = document.getElementById("btn-mon-avatar");
+const lienModifierAvatar = document.getElementById("lien-modifier-avatar");
+const modalAvatar = document.getElementById("modal-avatar");
+const avatarApercuGrand = document.getElementById("avatar-apercu-grand");
+const avatarAleatoire = document.getElementById("avatar-aleatoire");
+const avatarRotation = document.getElementById("avatar-rotation");
+const avatarEnregistrer = document.getElementById("avatar-enregistrer");
+const avatarFermer = document.getElementById("avatar-fermer");
+
+let avatarEnCours = { ...AVATAR_DEFAUT };
+
+function majApercuAvatar() {
+  avatarApercuGrand.innerHTML = dessinerAvatar(avatarEnCours, 110);
+}
+
+// Construit une rangée de formes cliquables
+function construireFormes(conteneurId, formes, champ) {
+  const conteneur = document.getElementById(conteneurId);
+  if (!conteneur) return;
+
+  conteneur.innerHTML = "";
+  formes.forEach(f => {
+    const bouton = document.createElement("button");
+    bouton.classList.add("choix-forme");
+    bouton.title = f.nom;
+    if (avatarEnCours[champ] === f.id) bouton.classList.add("actif");
+
+    // Aperçu miniature de la forme seule
+    const apercu = { ...avatarEnCours };
+    apercu[champ] = f.id;
+    if (champ === "fond") {
+      apercu.forme = "aucune";
+      apercu.accent = "aucun";
+    }
+    bouton.innerHTML = dessinerAvatar(apercu, 34);
+
+    bouton.addEventListener("click", () => {
+      avatarEnCours[champ] = f.id;
+      majApercuAvatar();
+      construireAtelierAvatar();
+    });
+
+    conteneur.appendChild(bouton);
+  });
+}
+
+// Construit une palette de couleurs cliquables
+function construirePalette(conteneurId, champ) {
+  const conteneur = document.getElementById(conteneurId);
+  if (!conteneur) return;
+
+  conteneur.innerHTML = "";
+  PALETTE.forEach(couleur => {
+    const bouton = document.createElement("button");
+    bouton.classList.add("pastille-couleur");
+    bouton.style.background = couleur;
+    if (avatarEnCours[champ] === couleur) bouton.classList.add("actif");
+
+    bouton.addEventListener("click", () => {
+      avatarEnCours[champ] = couleur;
+      majApercuAvatar();
+      construireAtelierAvatar();
+    });
+
+    conteneur.appendChild(bouton);
+  });
+}
+
+function construireAtelierAvatar() {
+  construireFormes("avatar-formes-fond", FORMES_FOND, "fond");
+  construirePalette("avatar-couleurs-fond", "cFond");
+  construireFormes("avatar-formes-principales", FORMES_PRINCIPALES, "forme");
+  construirePalette("avatar-couleurs-forme", "cForme");
+  construireFormes("avatar-formes-accent", FORMES_ACCENT, "accent");
+  construirePalette("avatar-couleurs-accent", "cAccent");
+  avatarRotation.value = avatarEnCours.rotation || 0;
+}
+
+function ouvrirAtelierAvatar() {
+  avatarEnCours = { ...AVATAR_DEFAUT, ...(avatarsConnus[monPseudo] || {}) };
+  majApercuAvatar();
+  construireAtelierAvatar();
+  modalAvatar.classList.remove("cache");
+}
+
+btnMonAvatar.addEventListener("click", ouvrirAtelierAvatar);
+lienModifierAvatar.addEventListener("click", ouvrirAtelierAvatar);
+avatarFermer.addEventListener("click", () => modalAvatar.classList.add("cache"));
+
+avatarRotation.addEventListener("input", () => {
+  avatarEnCours.rotation = parseInt(avatarRotation.value, 10);
+  majApercuAvatar();
+});
+
+avatarAleatoire.addEventListener("click", () => {
+  const auHasard = liste => liste[Math.floor(Math.random() * liste.length)];
+
+  avatarEnCours = {
+    fond: auHasard(FORMES_FOND).id,
+    cFond: auHasard(PALETTE),
+    forme: auHasard(FORMES_PRINCIPALES.filter(f => f.id !== "aucune")).id,
+    cForme: auHasard(PALETTE),
+    accent: auHasard(FORMES_ACCENT).id,
+    cAccent: auHasard(PALETTE),
+    rotation: Math.floor(Math.random() * 24) * 15
+  };
+
+  majApercuAvatar();
+  construireAtelierAvatar();
+});
+
+avatarEnregistrer.addEventListener("click", async () => {
+  const reponse = await fetch("/mon-avatar", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ avatar: avatarEnCours })
+  });
+
+  const data = await reponse.json();
+
+  if (data.succes) {
+    avatarsConnus[monPseudo] = { ...avatarEnCours };
+    rafraichirAvatarsAffiches();
+    modalAvatar.classList.add("cache");
+  } else {
+    alert(data.erreur || "Erreur lors de l'enregistrement.");
+  }
+});
 
 // ---------- Centre de notifications ----------
 
@@ -2118,11 +2503,22 @@ function ajouterMessageAffiche(data) {
   messageEl.classList.add("message");
   messageEl.classList.add(data.auteur === monPseudo ? "mine" : "other");
 
-  // Nom de l'auteur
+  // Icône et nom de l'auteur
+  const entete = document.createElement("span");
+  entete.classList.add("message-entete");
+
+  const avatar = document.createElement("span");
+  avatar.classList.add("avatar-conteneur");
+  avatar.dataset.avatarDe = data.auteur;
+  avatar.dataset.avatarTaille = "22";
+  avatar.innerHTML = dessinerAvatar(avatarsConnus[data.auteur], 22);
+
   const auteurEl = document.createElement("span");
   auteurEl.classList.add("auteur");
   auteurEl.textContent = data.auteur;
-  messageEl.appendChild(auteurEl);
+
+  entete.append(avatar, auteurEl);
+  messageEl.appendChild(entete);
 
   // Image éventuelle
   if (data.image_url) {
@@ -2434,6 +2830,13 @@ function demarrerChat() {
   socket.on("presence", (data) => {
     personnesEnLigne = new Set(data.enLigne);
     afficherListeUtilisateurs();
+    if (typeof afficherConversations === "function") afficherConversations();
+  });
+
+  // Quelqu'un a modifié son icône
+  socket.on("avatar_maj", (data) => {
+    avatarsConnus[data.pseudo] = data.avatar;
+    rafraichirAvatarsAffiches();
   });
 
   socket.on("frappe", (data) => {
@@ -2884,6 +3287,9 @@ function demarrerChat() {
 
     if (data.message.auteur !== monPseudo) {
       incrementerNonLus(cle);
+
+      conversationsOuvertes.add(data.avec);
+      afficherConversations();
 
       // Si la personne n'est pas encore dans la liste, on la recharge
       const connu = tousLesUtilisateurs.some(u => u.pseudo === data.avec);

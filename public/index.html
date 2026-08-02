@@ -73,6 +73,22 @@
 
   <div class="app-container">
 
+    <!-- Barre latérale : messages privés et profil -->
+    <aside class="sidebar-mp">
+      <div class="profil-bloc">
+        <button id="btn-mon-avatar" title="Personnaliser mon icône">
+          <span id="apercu-mon-avatar" data-avatar-de="" data-avatar-taille="46"></span>
+        </button>
+        <div class="profil-infos">
+          <div id="mon-pseudo-affiche"></div>
+          <button id="lien-modifier-avatar">Modifier mon icône</button>
+        </div>
+      </div>
+
+      <div class="sidebar-titre">Conversations</div>
+      <div id="liste-conversations"></div>
+    </aside>
+
     <!-- Zone de chat -->
     <div class="chat-container">
       <div id="fond-cubes" class="cache" aria-hidden="true"></div>
@@ -312,6 +328,46 @@
       <div class="modal-actions">
         <button id="perso-reinitialiser" class="secondaire">Réinitialiser</button>
         <button id="perso-fermer">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fenêtre : création de l'icône de profil -->
+  <div id="modal-avatar" class="modal cache">
+    <div class="modal-contenu large">
+      <h2>🎭 Mon icône</h2>
+
+      <div class="avatar-atelier">
+        <div id="avatar-apercu-grand"></div>
+        <button id="avatar-aleatoire" class="secondaire">🎲 Au hasard</button>
+      </div>
+
+      <div class="section-perso">
+        <div class="titre-section">Fond</div>
+        <div id="avatar-formes-fond" class="liste-formes"></div>
+        <div id="avatar-couleurs-fond" class="palette"></div>
+      </div>
+
+      <div class="section-perso">
+        <div class="titre-section">Forme principale</div>
+        <div id="avatar-formes-principales" class="liste-formes"></div>
+        <div id="avatar-couleurs-forme" class="palette"></div>
+      </div>
+
+      <div class="section-perso">
+        <div class="titre-section">Détail</div>
+        <div id="avatar-formes-accent" class="liste-formes"></div>
+        <div id="avatar-couleurs-accent" class="palette"></div>
+      </div>
+
+      <div class="section-perso">
+        <div class="titre-section">Rotation</div>
+        <input type="range" id="avatar-rotation" min="0" max="345" step="15" value="0">
+      </div>
+
+      <div class="modal-actions">
+        <button id="avatar-enregistrer">Enregistrer</button>
+        <button id="avatar-fermer" class="secondaire">Annuler</button>
       </div>
     </div>
   </div>

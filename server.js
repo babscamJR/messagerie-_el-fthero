@@ -427,6 +427,61 @@ app.post("/changer-motdepasse", async (req, res) => {
   }
 });
 
+// Enregistre l'avatar de la personne connectée
+app.post("/mon-avatar", async (req, res) => {
+  if (!req.session.pseudo) {
+    return res.status(401).json({ erreur: "Non connecté." });
+  }
+
+  const config = req.body.avatar;
+
+  // Garde-fou : on refuse toute configuration anormalement lourde
+  const serialise = JSON.stringify(config || {});
+  if (serialise.length > 600) {
+    return res.status(400).json({ erreur: "Configuration invalide." });
+  }
+
+  try {
+    await pool.query(
+      "UPDATE utilisateurs SET avatar = $1 WHERE pseudo = $2",
+      [serialise, req.session.pseudo]
+    );
+
+    io.emit("avatar_maj", { pseudo: req.session.pseudo, avatar: config });
+    res.json({ succes: true });
+  } catch (err) {
+    console.error("Erreur enregistrement avatar :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
+});
+
+// Renvoie tous les avatars connus, pour l'affichage
+app.get("/avatars", async (req, res) => {
+  if (!req.session.pseudo) {
+    return res.status(401).json({ erreur: "Non connecté." });
+  }
+
+  try {
+    const resultat = await pool.query(
+      "SELECT pseudo, avatar FROM utilisateurs WHERE avatar IS NOT NULL"
+    );
+
+    const avatars = {};
+    resultat.rows.forEach(r => {
+      try {
+        avatars[r.pseudo] = JSON.parse(r.avatar);
+      } catch (err) {
+        // Configuration illisible : on l'ignore
+      }
+    });
+
+    res.json({ avatars });
+  } catch (err) {
+    console.error("Erreur récupération avatars :", err);
+    res.status(500).json({ erreur: "Erreur serveur." });
+  }
+});
+
 // Liste des groupes en attente de validation
 app.get("/admin/groupes-en-attente", verifierAdmin, async (req, res) => {
   try {
